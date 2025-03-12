@@ -1,1 +1,31 @@
-{ "name": "Data 5", "description": "Ini adalah data 5", "version": "1.0.0" }
+{
+  "status": 200,
+  "content": "Success",
+  "result": {
+    "action": "answer",
+    "answer": "Ryujinshi Hikaru, also known as Hika-San, is a young dragon emperor from the Green Light Forest, characterized by his bright green body and symbolizing strength and wisdom. His name combines \"Ryujin\" (dragon god) and \"shi\" (dog), with \"Hikaru\" meaning light, reflecting his elegant appearance.",
+    "sources_count": "2",
+    "score": 0.6,
+    "sorry_reason": "",
+    "sources": [
+      {
+        "section": {},
+        "article": {
+          "text": "Ryujinshi Hikaru",
+          "site": "pvc.moe",
+          "link": "https://pvc.moe/creator/p/i9mgasbfk1.ryujinshi-hikaru-ch-faststudio"
+        }
+      },
+      {
+        "article": {
+          "site": "Fandom",
+          "link": "https://the-summer-hikaru-died.fandom.com/wiki/Tsujinaka_Yoshiki",
+          "text": "Tsujinaka Yoshiki"
+        },
+        "section": {}
+      }
+    ],
+    "timestamp": 1737862430
+  },
+  "creator": "Fast Rest API - FastURL"
+}
