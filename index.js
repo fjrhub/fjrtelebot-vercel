@@ -3,34 +3,44 @@ const fs = require("fs");
 const path = require("path");
 
 const app = express();
-
-// Middleware untuk JSON
 app.use(express.json());
 
-// Fungsi membaca file JSON
-const readJSONFile = (fileName) => {
+// Fungsi membaca file dengan berbagai format
+const readFile = (fileName) => {
   try {
     const filePath = path.join(__dirname, "data", fileName);
     if (!fs.existsSync(filePath)) {
       return { error: "File tidak ditemukan." };
     }
+
+    const ext = path.extname(fileName).toLowerCase();
     const data = fs.readFileSync(filePath, "utf-8");
-    return JSON.parse(data);
+
+    if (ext === ".json") {
+      return JSON.parse(data); // Parse JSON
+    } else if (ext === ".txt") {
+      return { content: data }; // Kembalikan teks biasa
+    } else if (ext === ".csv") {
+      const rows = data.split("\n").map(row => row.split(","));
+      return { csv: rows }; // Kembalikan CSV sebagai array
+    } else if (ext === ".xml") {
+      return { xml: data }; // Kembalikan XML sebagai string
+    } else {
+      return { error: "Format file tidak didukung." };
+    }
   } catch (error) {
     return { error: "Terjadi kesalahan membaca file." };
   }
 };
 
-// 6 Endpoint untuk membaca data JSON
-app.get("/api/data1", (req, res) => res.json(readJSONFile("data1.json")));
-app.get("/api/data2", (req, res) => res.json(readJSONFile("data2.json")));
-app.get("/api/data3", (req, res) => res.json(readJSONFile("data3.json")));
-app.get("/api/data4", (req, res) => res.json(readJSONFile("data4.json")));
-app.get("/api/data5", (req, res) => res.json(readJSONFile("data5.json")));
-app.get("/api/data6", (req, res) => res.json(readJSONFile("data6.json")));
+// Endpoint dinamis berdasarkan nama file
+app.get("/api/:filename", (req, res) => {
+  const fileName = req.params.filename;
+  res.json(readFile(fileName));
+});
 
-// Default route
-app.get("/", (req, res) => res.send("API JSON Reader Berjalan di Vercel!"));
+// Route default
+app.get("/", (req, res) => res.json({ message: "API File Reader Berjalan di Vercel!" }));
 
 // Export untuk Vercel
 module.exports = app;
