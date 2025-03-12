@@ -3,7 +3,6 @@ const fs = require("fs");
 const path = require("path");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 // Middleware untuk JSON
 app.use(express.json());
@@ -31,10 +30,8 @@ app.get("/api/data5", (req, res) => res.json(readJSONFile("data5.json")));
 app.get("/api/data6", (req, res) => res.json(readJSONFile("data6.json")));
 
 // Default route
-app.get("/", (req, res) => res.send("API JSON Reader Berjalan!"));
+app.get("/", (req, res) => res.send("API JSON Reader Berjalan di Vercel!"));
 
-// Jalankan server
-app.listen(PORT, () => {
-  console.log(`Server berjalan di http://localhost:${PORT}`);
-});
+// Export untuk Vercel
+module.exports = app;
 
