@@ -1,5 +1,5 @@
 // pages/api/webhook/[secret].js
-const bot = require("@/lib/bot");
+const bot = require("../../../lib/bot");
 
 export const config = {
   api: { bodyParser: true },
