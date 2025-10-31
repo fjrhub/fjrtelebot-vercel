@@ -1,5 +1,5 @@
 // pages/api/webhook/[secret].js
-const bot = require("../../../lib/bot");
+import bot from "../../lib/bot"; // pastikan path sudah fix
 
 export const config = {
   api: { bodyParser: true },
@@ -17,8 +17,12 @@ export default async function handler(req, res) {
   if (secret !== expected) return res.status(401).send("Unauthorized");
 
   try {
+    // Inisialisasi bot sebelum handle update
+    await bot.init(); 
+
     const update = req.body;
     await bot.handleUpdate(update);
+
     return res.status(200).send("OK");
   } catch (err) {
     console.error("Webhook handler error:", err);
