@@ -1,5 +1,5 @@
 // pages/api/webhook/[secret].js
-import bot from "../../lib/bot"; // pastikan path sudah fix
+import bot from "@lib/bot.js";
 
 export const config = {
   api: { bodyParser: true },
