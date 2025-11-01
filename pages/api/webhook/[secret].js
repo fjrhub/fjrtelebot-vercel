@@ -1,17 +1,31 @@
-import bot from "@lib/bot";
+// pages/api/webhook/[secret].js
+import bot from "@lib/bot.js";
 
-export const config = { api: { bodyParser: true } };
+export const config = {
+  api: { bodyParser: true },
+};
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).end("Method Not Allowed");
-  if (req.query.secret !== process.env.WEBHOOK_SECRET) return res.status(401).end("Unauthorized");
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).send("Method Not Allowed");
+  }
+
+  const { secret } = req.query;
+  const expected = process.env.WEBHOOK_SECRET;
+  if (!expected) return res.status(500).send("Server misconfiguration");
+  if (secret !== expected) return res.status(401).send("Unauthorized");
 
   try {
-    if (!bot.botInfo) await bot.init(); // ← proteksi tambahan
-    await bot.handleUpdate(req.body);
-    res.status(200).end("OK");
+    // Inisialisasi bot sebelum handle update
+    await bot.init(); 
+
+    const update = req.body;
+    await bot.handleUpdate(update);
+
+    return res.status(200).send("OK");
   } catch (err) {
-    console.error("❌ Webhook error:", err);
-    res.status(500).end("Internal Error");
+    console.error("Webhook handler error:", err);
+    return res.status(500).send("Internal Server Error");
   }
 }
