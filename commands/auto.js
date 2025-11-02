@@ -1,9 +1,4 @@
 const axios = require("axios");
-const { exec } = require("child_process");
-const path = require("path");
-const fs = require("fs");
-const { InputFile } = require("grammy");
-const https = require("https");
 
 module.exports = {
   name: "auto",
@@ -513,96 +508,7 @@ module.exports = {
 
       throw new Error("IG API 3 returned unsupported media.");
     };
-
-    // helper fallback
-    // fungsi untuk resolve redirect URL (vt.tiktok → www.tiktok)
-    function resolveRedirect(url) {
-      return new Promise((resolve) => {
-        https
-          .get(url, (res) => {
-            if (res.headers.location) {
-              resolve(res.headers.location);
-            } else {
-              resolve(url);
-            }
-          })
-          .on("error", () => resolve(url));
-      });
-    }
-
-    async function ytDlpFallback(ctx, url, sendOrEditStatus) {
-      // 🌐 Directly fetch input URL without resolveRedirect()
-      const resolvedUrl = url.trim();
-
-      // Platform detection
-      const isTikTok = resolvedUrl.includes("tiktok.com");
-      const isInstagram = resolvedUrl.includes("instagram.com");
-      const isFacebook = resolvedUrl.includes("facebook.com");
-
-      console.log("🔍 [ytDlpFallback] URL dari input:", resolvedUrl);
-
-      // 📸 Skip all types of photo/non-video URLs
-      if (
-        /\.(jpg|jpeg|png|webp|gif)$/i.test(resolvedUrl) ||
-        resolvedUrl.includes("/photo/") ||
-        resolvedUrl.includes("/p/") ||
-        resolvedUrl.includes("/share/p/") ||
-        resolvedUrl.includes("/unsupportedbrowser") ||
-        resolvedUrl.includes("?_fb_noscript") ||
-        resolvedUrl.includes("/help/") ||
-        resolvedUrl.includes("/login/") ||
-        resolvedUrl.includes("/checkpoint/")
-      ) {
-        console.log("🧩 Reason: Detected invalid or non-video page");
-        await sendOrEditStatus(
-          "⚠️ URL is not a video (invalid photo or page) — skip yt-dlp fallback."
-        );
-        return false;
-      }
-
-      // 📁 Make sure the output folder exists
-      const outputDir = path.resolve(__dirname, "../../yt-dlp");
-      if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
-      }
-
-      const timestamp = Date.now();
-      const basePath = path.join(outputDir, `video_${timestamp}`);
-      const outputFile = `${basePath}.mp4`;
-
-      // 🎥 Determine the command according to the platform
-      let cmd;
-      if (isFacebook) {
-        cmd = `yt-dlp -o "${basePath}.%(ext)s" "${resolvedUrl}"`;
-      } else {
-        cmd = `yt-dlp -f "bestvideo+bestaudio/best" --merge-output-format mp4 -o "${basePath}.%(ext)s" "${resolvedUrl}"`;
-      }
-
-      console.log("🚀 [ytDlpFallback] Executing command:", cmd);
-
-      // 🚀 Jalankan yt-dlp
-      return new Promise((resolve) => {
-        exec(cmd, async (error) => {
-          if (error) {
-            console.error("❌ yt-dlp error:", error.message);
-            await sendOrEditStatus(`❌ yt-dlp error: ${error.message}`);
-            return resolve(false);
-          }
-
-          try {
-            await ctx.replyWithVideo(new InputFile(outputFile));
-            fs.unlinkSync(outputFile);
-            resolve(true);
-          } catch (err) {
-            console.error("❌ Gagal kirim video:", err.message);
-            await sendOrEditStatus(`❌ Gagal kirim video: ${err.message}`);
-            fs.unlinkSync(outputFile);
-            resolve(false);
-          }
-        });
-      });
-    }
-
+   
     // -------------------- MAIN FLOW (3 API attempts + fallback) --------------------
     try {
       await sendOrEditStatus("📡 Trying API 1...");
@@ -788,26 +694,8 @@ module.exports = {
           return;
         } catch (e3) {
           console.error("⚠️ API 3 failed:", e3?.message);
-
-          try {
-            await sendOrEditStatus("⚠️ All APIs failed. Fallback to yt-dlp...");
-            const success = await ytDlpFallback(ctx, input, sendOrEditStatus);
-
-            if (success === false) {
-              await deleteStatus();
-              return; // Don't throw an error if you skip a photo
-            }
-
-            await deleteStatus();
-            return;
-          } catch (e4) {
-            console.error("❌ yt-dlp fallback failed:", e4?.message);
-            try {
-              await sendOrEditStatus("❌ All APIs and yt-dlp fallback failed.");
-            } catch (e) {}
-            await deleteStatus();
-            return;
-          }
+          await deleteStatus();
+          return
         }
       }
     }
