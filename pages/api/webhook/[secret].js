@@ -1,5 +1,5 @@
-import bot from "@lib/bot";
-import { handleMessage, handleCallback } from "@lib/handler";
+import bot from "../../../lib/bot.js";
+import { handleMessage, handleCallback } from "../../../lib/handler.js";
 
 export const config = {
   api: { bodyParser: true },
