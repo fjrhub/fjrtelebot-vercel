@@ -2,26 +2,52 @@ const axios = require("axios");
 
 module.exports = {
   name: "waifu",
-  description: "Get a random waifu image from WaifuPics",
+  description: "Get a random waifu image from two fallback APIs",
   async execute(ctx) {
-    console.log("🚀 /waifu command executed");
-    await ctx.reply("🔍 Fetching your waifu...");
+    let statusMessage = null;
+
+    const sendOrEditStatus = async (text) => {
+      if (!statusMessage) {
+        statusMessage = await ctx.reply(text);
+      } else {
+        await ctx.api.editMessageText(chatId, statusMessage.message_id, text);
+      }
+    };
+
+    const deleteStatus = async () => {
+      if (statusMessage) {
+        await new Promise((res) => setTimeout(res, 1000));
+        await ctx.api.deleteMessage(chatId, statusMessage.message_id);
+        statusMessage = null;
+      }
+    };
+
+    const sendPhoto = async (url) => {
+      await ctx.replyWithPhoto(url);
+      await deleteStatus();
+    };
 
     try {
-      const res = await fetch("https://api.waifu.pics/sfw/waifu");
-      console.log("✅ Fetched WaifuPics:", res.status);
-      const data = await res.json();
-      const imageUrl = data?.url;
-
-      if (!imageUrl) {
-        console.log("❌ Invalid image URL");
-        return ctx.reply("❌ Failed to retrieve a valid image.");
+      await sendOrEditStatus("📡 Trying API 1...");
+      const res1 = await axios.get(createUrl("waifupics", "/sfw/waifu"), {
+        timeout: 8000,
+      });
+      const imageUrl1 = res1.data?.url;
+      if (!imageUrl1) throw new Error("API 1 returned an invalid response.");
+      await sendPhoto(imageUrl1);
+    } catch {
+      try {
+        await sendOrEditStatus("📡 Trying API 2...");
+        const res2 = await axios.get(
+          createUrl("waifuim", "/search?included_tags=waifu"),
+          { timeout: 8000 }
+        );
+        const imageUrl2 = res2.data?.images?.[0]?.url;
+        if (!imageUrl2) throw new Error("API 2 returned an invalid response.");
+        await sendPhoto(imageUrl2);
+      } catch {
+        await sendOrEditStatus("❌ Failed to fetch images from both APIs.");
       }
-
-      await ctx.replyWithPhoto(imageUrl);
-    } catch (err) {
-      console.error("🔥 Error fetching WaifuPics:", err);
-      await ctx.reply("❌ Failed to retrieve data from WaifuPics.");
     }
   },
 };
