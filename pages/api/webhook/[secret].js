@@ -1,9 +1,12 @@
-// pages/api/webhook/[secret].js
-import bot from "@lib/bot.js";
+import bot from "@/lib/bot";
+import { handleMessage, handleCallback } from "@/lib/handler";
 
 export const config = {
   api: { bodyParser: true },
 };
+
+bot.on("message", handleMessage);
+bot.on("callback_query", handleCallback);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -17,15 +20,11 @@ export default async function handler(req, res) {
   if (secret !== expected) return res.status(401).send("Unauthorized");
 
   try {
-    // Inisialisasi bot sebelum handle update
-    await bot.init(); 
-
-    const update = req.body;
-    await bot.handleUpdate(update);
-
+    await bot.init();
+    await bot.handleUpdate(req.body);
     return res.status(200).send("OK");
   } catch (err) {
-    console.error("Webhook handler error:", err);
+    console.error("❌ Webhook handler error:", err);
     return res.status(500).send("Internal Server Error");
   }
 }
