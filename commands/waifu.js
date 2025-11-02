@@ -2,20 +2,25 @@ const axios = require("axios");
 
 module.exports = {
   name: "waifu",
-  description: "Get a random waifu image from the API WaifuPics",
+  description: "Get a random waifu image from WaifuPics",
   async execute(ctx) {
+    console.log("🚀 /waifu command executed");
+    await ctx.reply("🔍 Fetching your waifu...");
+
     try {
-      const response = await axios.get("https://api.waifu.pics/sfw/waifu", {
-        timeout: 8000,
-      });
-      const imageUrl = response.data?.url;
+      const res = await fetch("https://api.waifu.pics/sfw/waifu");
+      console.log("✅ Fetched WaifuPics:", res.status);
+      const data = await res.json();
+      const imageUrl = data?.url;
 
       if (!imageUrl) {
-        return ctx.reply("❌ Failed to retrieve a valid image from WaifuPics.");
+        console.log("❌ Invalid image URL");
+        return ctx.reply("❌ Failed to retrieve a valid image.");
       }
 
       await ctx.replyWithPhoto(imageUrl);
-    } catch {
+    } catch (err) {
+      console.error("🔥 Error fetching WaifuPics:", err);
       await ctx.reply("❌ Failed to retrieve data from WaifuPics.");
     }
   },
