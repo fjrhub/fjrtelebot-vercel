@@ -551,12 +551,11 @@ module.exports = {
         return;
       }
 
-      const res = await getWithTimeout(
-        createUrl(
-          "siputzx",
-          `/api/d/tiktok/v2?url=${encodeURIComponent(input)}`
-        ),
-        8000 // timeout only for API
+      const res = await axios.get(
+        `https://api.siputzx.my.id/api/d/tiktok/v2?url=${encodeURIComponent(
+          input
+        )}`,
+        { timeout: 8000 }
       );
 
       const data = res.data;
