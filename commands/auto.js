@@ -30,40 +30,6 @@ module.exports = {
     }
 
     const input = text;
-    let statusMessage = null;
-
-    const sendOrEditStatus = async (newText) => {
-      if (!statusMessage) {
-        try {
-          statusMessage = await ctx.reply(newText);
-        } catch (e) {
-          // fallback: use api.sendMessage
-          statusMessage = await ctx.api.sendMessage(chatId, newText);
-        }
-      } else {
-        try {
-          await ctx.api.editMessageText(
-            chatId,
-            statusMessage.message_id,
-            newText
-          );
-        } catch (e) {
-          // ignore edit failure
-        }
-      }
-    };
-
-    const deleteStatus = async () => {
-      if (statusMessage) {
-        await new Promise((res) => setTimeout(res, 5000));
-        try {
-          await ctx.api.deleteMessage(chatId, statusMessage.message_id);
-        } catch (e) {
-          // ignore
-        }
-        statusMessage = null;
-      }
-    };
 
     const chunkArray = (arr, size) => {
       if (!Array.isArray(arr)) return [];
@@ -245,8 +211,6 @@ module.exports = {
 
     // -------------------- MAIN FLOW (3 API attempts + fallback) --------------------
     try {
-      await sendOrEditStatus("📡 Trying API 1...");
-
       if (isFacebook) {
         const res1 = await axios.get(
           createUrl(
