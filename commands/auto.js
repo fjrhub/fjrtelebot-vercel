@@ -1,5 +1,4 @@
 const axios = require("axios");
-import { createUrl } from "../utils/api";
 
 module.exports = {
   name: "auto",
