@@ -229,7 +229,6 @@ module.exports = {
       try {
         console.log("🔹 [igHandler2] Diterima data:", payload);
 
-        // Cegah payload kosong
         if (!payload || typeof payload !== "object") {
           console.warn("⚠️ [igHandler2] Payload kosong atau bukan object.");
           return ctx.reply("⚠️ Gagal membaca data dari API Instagram Archive.");
@@ -242,33 +241,49 @@ module.exports = {
           ? [payload.url]
           : [];
 
-        console.log("🔍 [igHandler2] Sebelum filter:", urls);
-
         const validUrls = urls.filter(
           (u) => typeof u === "string" && u.startsWith("http")
         );
-        console.log("✅ [igHandler2] URLs terdeteksi:", validUrls);
-
-        const caption = payload.caption || "(tidak ada caption)";
-        const like = payload.like || 0;
-        const comment = payload.comment || 0;
-
-        console.log(`📝 [igHandler2] Caption: ❤️ ${like} | 💬 ${comment}`);
-
         if (validUrls.length === 0) {
-          console.warn(
-            "⚠️ [igHandler2] Tidak ada URL valid atau format tidak dikenali."
-          );
+          console.warn("⚠️ [igHandler2] Tidak ada URL valid.");
           return ctx.reply(
             "⚠️ Tidak ada media yang ditemukan dari Instagram Archive."
           );
         }
 
-        // Kirim tiap video
-        for (const url of validUrls) {
-          await ctx.replyWithVideo(url, {
-            caption: `${caption}\n\n❤️ ${like} | 💬 ${comment}`,
+        // Caption hanya like & comment
+        const caption = `❤️ ${payload.like || 0}\n💬 ${payload.comment || 0}`;
+
+        if (payload.isVideo) {
+          // Video hanya 1 URL
+          await ctx.api.sendVideo(chatId, validUrls[0], {
+            caption,
+            supports_streaming: true,
           });
+        } else {
+          // Foto
+          if (validUrls.length === 1) {
+            await ctx.api.sendPhoto(chatId, validUrls[0], { caption });
+          } else {
+            // Bagi per 10 foto untuk sendMediaGroup
+            const chunkArray = (arr, size) => {
+              const chunks = [];
+              for (let i = 0; i < arr.length; i += size)
+                chunks.push(arr.slice(i, i + size));
+              return chunks;
+            };
+            const groups = chunkArray(validUrls, 10);
+
+            for (const grp of groups) {
+              const mediaGroup = grp.map((url, idx) => ({
+                type: "photo",
+                media: url,
+                caption: idx === 0 ? caption : undefined, // caption hanya di media pertama
+              }));
+              await ctx.api.sendMediaGroup(chatId, mediaGroup);
+              await new Promise((r) => setTimeout(r, 1500));
+            }
+          }
         }
 
         console.log("✅ [igHandler2] Pengiriman selesai.\n");
