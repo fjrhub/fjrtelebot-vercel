@@ -62,11 +62,11 @@ module.exports = {
         throw new Error("No downloadable media found from TikTok API.");
 
       const stats = metadata?.stats || {};
-      const caption = `❤️ ${formatNumber(stats.likeCount || 0)} ▶️ ${formatNumber(
-        stats.playCount || 0
-      )} 💬 ${formatNumber(stats.commentCount || 0)} ↗️ ${formatNumber(
-        stats.shareCount || 0
-      )}`;
+      const caption = `❤️ ${formatNumber(
+        stats.likeCount || 0
+      )} ▶️ ${formatNumber(stats.playCount || 0)} 💬 ${formatNumber(
+        stats.commentCount || 0
+      )} ↗️ ${formatNumber(stats.shareCount || 0)}`;
 
       if (videos.length) {
         await ctx.api.sendVideo(chatId, videos[1] || videos[0], { caption });
@@ -98,7 +98,10 @@ module.exports = {
         md.download
       )}`;
 
-      if (Array.isArray(data.media?.image_slide) && data.media.image_slide.length > 0) {
+      if (
+        Array.isArray(data.media?.image_slide) &&
+        data.media.image_slide.length > 0
+      ) {
         const groups = chunkArray(data.media.image_slide, 10);
         for (const grp of groups) {
           const mediaGroup = grp.map((url, i) => ({
@@ -128,8 +131,7 @@ module.exports = {
         : [];
       const video = Array.isArray(data.data)
         ? data.data.find(
-            (i) =>
-              i.type === "nowatermark" || i.type === "nowatermark_hd"
+            (i) => i.type === "nowatermark" || i.type === "nowatermark_hd"
           )
         : null;
       const stats = data.stats || {};
@@ -163,7 +165,9 @@ module.exports = {
     };
 
     const fbHandler1 = async (ctx, chatId, data) => {
-      const hd = data.data?.find((i) => i.format === "mp4" && i.resolution === "HD");
+      const hd = data.data?.find(
+        (i) => i.format === "mp4" && i.resolution === "HD"
+      );
       if (!hd?.url) throw new Error("HD MP4 not found.");
       await ctx.api.sendVideo(chatId, hd.url);
     };
@@ -181,17 +185,29 @@ module.exports = {
     };
 
     const igHandler1 = async (ctx, chatId, data) => {
+      console.log("📥 [IG Handler 1] Raw data:", JSON.stringify(data, null, 2));
+
       const results = data.data;
       if (!Array.isArray(results) || !results.length)
-        throw new Error("Invalid IG API 1 data.");
+        throw new Error("Invalid IG API 1 data structure.");
+
       const urls = results.map((i) => i?.url).filter(Boolean);
+      console.log("🔗 [IG Handler 1] All URLs:", urls);
+
       const video = urls.find((u) => u.includes(".mp4"));
       const photos = urls.filter((u) => !u.includes(".mp4"));
+
+      console.log("🎞️ [IG Handler 1] Video URL:", video || "None");
+      console.log("🖼️ [IG Handler 1] Photo URLs:", photos);
+
       if (video) {
+        console.log("📤 Sending video...");
         await ctx.api.sendVideo(chatId, video);
         return;
       }
+
       if (photos.length) {
+        console.log("📤 Sending photos in groups of 10...");
         const groups = chunkArray(photos, 10);
         for (const grp of groups) {
           await ctx.api.sendMediaGroup(
@@ -200,25 +216,41 @@ module.exports = {
           );
           await delay(1500);
         }
+        return;
       }
+
+      throw new Error("No media (video/photo) found in IG API 1.");
     };
 
     const igHandler2 = async (ctx, chatId, data) => {
+      console.log("📥 [IG Handler 2] Raw data:", JSON.stringify(data, null, 2));
+
       const result = data.result || {};
       const urls = Array.isArray(result.url)
         ? result.url
         : result.url
         ? [result.url]
         : [];
+
+      console.log("🔗 [IG Handler 2] URLs:", urls);
+      console.log("📊 [IG Handler 2] Metadata:", {
+        isVideo: result.isVideo,
+        like: result.like,
+      });
+
       const caption = `${toNumberFormat(result.like)} Likes`;
+
       if (result.isVideo && urls.length) {
+        console.log("📤 Sending video:", urls[0]);
         await ctx.api.sendVideo(chatId, urls[0], {
           caption,
           supports_streaming: true,
         });
         return;
       }
+
       if (!result.isVideo && urls.length) {
+        console.log("📤 Sending photos:", urls);
         const groups = chunkArray(urls, 10);
         for (const grp of groups) {
           const mediaGroup = grp.map((u, i) => ({
@@ -229,16 +261,30 @@ module.exports = {
           await ctx.api.sendMediaGroup(chatId, mediaGroup);
           await delay(1500);
         }
+        return;
       }
+
+      throw new Error("No valid media URLs found in IG API 2.");
     };
 
     const igHandler3 = async (ctx, chatId, data) => {
+      console.log("📥 [IG Handler 3] Raw data:", JSON.stringify(data, null, 2));
+
       const media = data?.result?.data || [];
       const stats = data?.result?.statistics || {};
+
+      console.log("📊 [IG Handler 3] Stats:", stats);
+      console.log("📦 [IG Handler 3] Media count:", media.length);
+
       if (!Array.isArray(media) || !media.length)
-        throw new Error("Invalid IG API 3 data.");
+        throw new Error("Invalid IG API 3 media data.");
+
       const images = media.filter((i) => i.type === "image").map((i) => i.url);
       const videos = media.filter((i) => i.type === "video").map((i) => i.url);
+
+      console.log("🎞️ [IG Handler 3] Videos:", videos);
+      console.log("🖼️ [IG Handler 3] Images:", images);
+
       const caption = [
         stats.like_count ? `❤️ ${stats.like_count}` : null,
         stats.comment_count ? `💬 ${stats.comment_count}` : null,
@@ -246,14 +292,18 @@ module.exports = {
       ]
         .filter(Boolean)
         .join(" · ");
+
       if (videos.length) {
+        console.log("📤 Sending video:", videos[0]);
         await ctx.api.sendVideo(chatId, videos[0], {
           caption,
           supports_streaming: true,
         });
         return;
       }
+
       if (images.length) {
+        console.log("📤 Sending photos...");
         const groups = chunkArray(images, 10);
         for (const grp of groups) {
           await ctx.api.sendMediaGroup(
@@ -266,7 +316,10 @@ module.exports = {
           );
           await delay(1500);
         }
+        return;
       }
+
+      throw new Error("No downloadable media found in IG API 3.");
     };
 
     // ---------- MAIN FLOW DENGAN ABORT ----------
@@ -275,23 +328,86 @@ module.exports = {
 
       if (isTikTok)
         apis.push(
-          { url: createUrl("siputzx", `/api/d/tiktok/v2?url=${encodeURIComponent(input)}`), handler: tthandler1, label: "Siputzx - TikTok" },
-          { url: createUrl("archive", `/api/download/tiktok?url=${encodeURIComponent(input)}`), handler: tthandler2, label: "Archive - TikTok" },
-          { url: createUrl("vreden", `/api/v1/download/tiktok?url=${encodeURIComponent(input)}`), handler: tthandler3, label: "Vreden - TikTok" }
+          {
+            url: createUrl(
+              "siputzx",
+              `/api/d/tiktok/v2?url=${encodeURIComponent(input)}`
+            ),
+            handler: tthandler1,
+            label: "Siputzx - TikTok",
+          },
+          {
+            url: createUrl(
+              "archive",
+              `/api/download/tiktok?url=${encodeURIComponent(input)}`
+            ),
+            handler: tthandler2,
+            label: "Archive - TikTok",
+          },
+          {
+            url: createUrl(
+              "vreden",
+              `/api/v1/download/tiktok?url=${encodeURIComponent(input)}`
+            ),
+            handler: tthandler3,
+            label: "Vreden - TikTok",
+          }
         );
 
       if (isInstagram)
         apis.push(
-          { url: createUrl("siputzx", `/api/d/igdl?url=${encodeURIComponent(input)}`), handler: igHandler1, label: "Siputzx - Instagram" },
-          { url: createUrl("archive", `/api/download/instagram?url=${encodeURIComponent(input)}`), handler: igHandler2, label: "Archive - Instagram" },
-          { url: createUrl("vreden", `/api/v1/download/instagram?url=${encodeURIComponent(input)}`), handler: igHandler3, label: "Vreden - Instagram" }
+          {
+            url: createUrl(
+              "siputzx",
+              `/api/d/igdl?url=${encodeURIComponent(input)}`
+            ),
+            handler: igHandler1,
+            label: "Siputzx - Instagram",
+          },
+          {
+            url: createUrl(
+              "archive",
+              `/api/download/instagram?url=${encodeURIComponent(input)}`
+            ),
+            handler: igHandler2,
+            label: "Archive - Instagram",
+          },
+          {
+            url: createUrl(
+              "vreden",
+              `/api/v1/download/instagram?url=${encodeURIComponent(input)}`
+            ),
+            handler: igHandler3,
+            label: "Vreden - Instagram",
+          }
         );
 
       if (isFacebook)
         apis.push(
-          { url: createUrl("siputzx", `/api/d/facebook?url=${encodeURIComponent(input)}`), handler: fbHandler1, label: "Siputzx - Facebook" },
-          { url: createUrl("archive", `/api/download/facebook?url=${encodeURIComponent(input)}`), handler: fbHandler2, label: "Archive - Facebook" },
-          { url: createUrl("vreden", `/api/v1/download/facebook?url=${encodeURIComponent(input)}`), handler: fbHandler3, label: "Vreden - Facebook" }
+          {
+            url: createUrl(
+              "siputzx",
+              `/api/d/facebook?url=${encodeURIComponent(input)}`
+            ),
+            handler: fbHandler1,
+            label: "Siputzx - Facebook",
+          },
+          {
+            url: createUrl(
+              "archive",
+              `/api/download/facebook?url=${encodeURIComponent(input)}`
+            ),
+            handler: fbHandler2,
+            label: "Archive - Facebook",
+          },
+          {
+            url: createUrl(
+              "vreden",
+              `/api/v1/download/facebook?url=${encodeURIComponent(input)}`
+            ),
+            handler: fbHandler3,
+            label: "Vreden - Facebook",
+          }
         );
 
       if (apis.length === 0) return;
@@ -322,7 +438,8 @@ module.exports = {
             console.log(`✅ ${api.label} sukses (${duration}s)`);
             return api.label; // pastikan return selalu ada
           } catch (err) {
-            if (err.name === "CanceledError" || err.name === "AbortError") return;
+            if (err.name === "CanceledError" || err.name === "AbortError")
+              return;
             throw err;
           }
         })()
