@@ -359,7 +359,7 @@ module.exports = {
         tiktok: {
           siputzx: true,
           archive: true,
-          vreden: true, // ubah ke false untuk menonaktifkan sementara
+          vreden: true,
         },
         instagram: {
           siputzx: false,
@@ -497,6 +497,7 @@ module.exports = {
               signal: controllers[idx].signal,
               timeout: 8000,
             });
+
             if (finished) return;
             finished = true;
 
@@ -504,19 +505,22 @@ module.exports = {
             if (!data || !data.status)
               throw new Error(`Invalid response from ${api.label}`);
 
-            // ganti baris ini:
-            await api.handler(ctx, chatId, data.result || data.data);
+            // ✅ Extract payload safely
+            let payload = {};
+            if (data?.result && typeof data.result === "object") {
+              payload = data.result;
+            } else if (data?.data && typeof data.data === "object") {
+              payload = data.data;
+            } else {
+              payload = data;
+            }
 
-            // dengan ini:
-            const payload =
-              data?.result?.url || data?.result?.result
-                ? data.result.result || data.result
-                : data.data || data;
-
+            console.log(`🔍 [${api.label}] Data mentah dari API:`, data);
             console.log(
-              `📦 [${api.label}] Payload dikirim ke handler:`,
+              `📦 [${api.label}] Payload final dikirim ke handler:`,
               payload
             );
+
             await api.handler(ctx, chatId, payload);
 
             controllers.forEach((c, i) => i !== idx && c.abort());
