@@ -496,7 +496,21 @@ module.exports = {
             if (!data || !data.status)
               throw new Error(`Invalid response from ${api.label}`);
 
+            // ganti baris ini:
             await api.handler(ctx, chatId, data.result || data.data);
+
+            // dengan ini:
+            const payload =
+              data?.result?.url || data?.result?.result
+                ? data.result.result || data.result
+                : data.data || data;
+
+            console.log(
+              `📦 [${api.label}] Payload dikirim ke handler:`,
+              payload
+            );
+            await api.handler(ctx, chatId, payload);
+
             controllers.forEach((c, i) => i !== idx && c.abort());
 
             const duration = ((Date.now() - start) / 1000).toFixed(2);
