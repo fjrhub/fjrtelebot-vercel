@@ -184,43 +184,81 @@ module.exports = {
       });
     };
 
-    const igHandler1 = async (ctx, chatId, data) => {
-      const results = data.data;
-      if (!Array.isArray(results) || !results.length) return;
-
-      const urls = results.map((i) => i?.url).filter(Boolean);
-      if (!urls.length) return;
-
-      const video = urls.find((u) => u.includes(".mp4"));
-      const photos = urls.filter((u) => !u.includes(".mp4"));
-
-      const formatNumber = (num) =>
-        typeof num === "number" ? num.toLocaleString("id-ID") : "0";
-      const caption = `❤️ ${formatNumber(data.like)}\n💬 ${formatNumber(
-        data.comment
-      )}`;
-
-      if (video) {
-        await ctx.api.sendVideo(chatId, video, {
-          caption,
-          supports_streaming: true,
-        });
-        return;
-      }
-
-      if (photos.length) {
-        const groups = chunkArray(photos, 10);
-        for (const grp of groups) {
-          const mediaGroup = grp.map((u, i) => ({
-            type: "photo",
-            media: u,
-            caption: i === 0 ? caption : undefined,
-          }));
-          await ctx.api.sendMediaGroup(chatId, mediaGroup);
-          await delay(1500);
+    async function igHandler1(ctx, chatId, payload) {
+      try {
+        if (!payload || typeof payload !== "object") {
+          console.warn("⚠️ [igHandler1] Payload kosong atau bukan object.");
+          return ctx.reply("⚠️ Gagal membaca data dari API Instagram 1.");
         }
+
+        // Ambil URL dari payload (seperti di igHandler2)
+        const urls = Array.isArray(payload.url)
+          ? payload.url
+          : typeof payload.url === "string"
+          ? [payload.url]
+          : [];
+
+        const validUrls = urls.filter(
+          (u) => typeof u === "string" && u.startsWith("http")
+        );
+
+        if (validUrls.length === 0) {
+          console.warn("⚠️ [igHandler1] Tidak ada URL valid ditemukan.");
+          return ctx.reply(
+            "⚠️ Tidak ada media yang bisa dikirim dari Instagram API 1."
+          );
+        }
+
+        // Tentukan video atau foto
+        const video = validUrls.find((u) => u.includes(".mp4"));
+        const photos = validUrls.filter((u) => !u.includes(".mp4"));
+
+        // Kirim media seperti igHandler1
+        if (video) {
+          console.log("🎞️ [igHandler1] Mengirim video...");
+          await ctx.api.sendVideo(chatId, video, {
+            supports_streaming: true,
+            caption: `❤️ ${payload.like || 0}\n💬 ${payload.comment || 0}`,
+          });
+          return;
+        }
+
+        if (photos.length > 0) {
+          console.log("🖼️ [igHandler1] Mengirim foto...");
+          const chunkArray = (arr, size) => {
+            const chunks = [];
+            for (let i = 0; i < arr.length; i += size)
+              chunks.push(arr.slice(i, i + size));
+            return chunks;
+          };
+
+          const groups = chunkArray(photos, 10);
+          for (const grp of groups) {
+            const mediaGroup = grp.map((url, idx) => ({
+              type: "photo",
+              media: url,
+              caption:
+                idx === 0
+                  ? `❤️ ${payload.like || 0}\n💬 ${payload.comment || 0}`
+                  : undefined,
+            }));
+            await ctx.api.sendMediaGroup(chatId, mediaGroup);
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+          return;
+        }
+
+        console.warn("⚠️ [igHandler1] Tidak ada media video/foto ditemukan.");
+        await ctx.reply(
+          "⚠️ Tidak ada media yang bisa dikirim dari Instagram API 1."
+        );
+      } catch (err) {
+        console.error("❌ [igHandler1] Error:", err);
+        await ctx.reply(
+          "⚠️ Terjadi kesalahan saat mengirim media dari IG API 1."
+        );
       }
-    };
+    }
 
     // ================================
     // Instagram Handler 2 (Archive)
