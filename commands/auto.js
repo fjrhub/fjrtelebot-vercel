@@ -478,6 +478,7 @@ module.exports = {
 
     // -------------------- MAIN FLOW (3 API attempts + fallback) --------------------
     // -------------------- MAIN FLOW (PARALLEL FETCH + PROMISE.ANY) --------------------
+    // -------------------- MAIN FLOW (PARALLEL FETCH DENGAN ABORT PADA YANG LAMBAT) --------------------
     try {
       const apis = [];
 
@@ -568,38 +569,48 @@ module.exports = {
         );
       }
 
-      // Tidak ada API yang cocok → keluar
       if (apis.length === 0) return;
 
-      // Jalankan semua request bersamaan
-      const fastest = await Promise.any(
-        apis.map(async (api) => {
+      // Buat controller untuk tiap request agar bisa dibatalkan
+      const controllers = apis.map(() => new AbortController());
+      let finished = false;
+
+      const requests = apis.map((api, idx) =>
+        (async () => {
           const start = Date.now();
           try {
-            const res = await getWithTimeout(api.url, 8000);
-            const data = res.data;
+            const res = await axios.get(api.url, {
+              signal: controllers[idx].signal,
+              timeout: 8000,
+            });
+            if (finished) return; // jika sudah ada yang selesai, hentikan kirim
+            finished = true;
 
-            // validasi umum
+            const data = res.data;
             if (!data || !data.status)
               throw new Error(`Invalid response from ${api.label}`);
 
-            // handler tiap platform
             await api.handler(ctx, chatId, data.result || data.data);
 
+            // Batalkan semua request lain
+            controllers.forEach((c, i) => {
+              if (i !== idx) c.abort();
+            });
+
             const duration = ((Date.now() - start) / 1000).toFixed(2);
-            console.log(`✅ ${api.label} selesai dalam ${duration}s`);
+            console.log(`✅ ${api.label} sukses (${duration}s)`);
             return api.label;
           } catch (err) {
-            const duration = ((Date.now() - start) / 1000).toFixed(2);
-            console.warn(
-              `⚠️ ${api.label} gagal (${duration}s): ${err.message}`
-            );
+            if (err.name === "CanceledError" || err.name === "AbortError")
+              return;
             throw err;
           }
-        })
+        })()
       );
 
-      console.log(`🎯 API tercepat: ${fastest}`);
+      // Tunggu salah satu berhasil (tidak perlu pakai Promise.any lagi)
+      const result = await Promise.any(requests);
+      console.log(`🎯 API tercepat: ${result}`);
       return;
     } catch (err) {
       console.error("❌ Semua API gagal:", err.message);
