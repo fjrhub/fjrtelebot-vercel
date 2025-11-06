@@ -224,20 +224,31 @@ module.exports = {
 
     const igHandler2 = async (ctx, chatId, data) => {
       try {
+        const result = data?.result || {};
         console.log(
           "🔹 [igHandler2] Diterima data:",
-          JSON.stringify(data, null, 2)
+          JSON.stringify(result, null, 2)
         );
 
-        const result = data?.result || {};
-        // Pastikan URL valid dan tidak kosong
-        const urls = (
-          Array.isArray(result.url) ? result.url : [result.url]
-        ).filter((u) => typeof u === "string" && u.trim().startsWith("http"));
+        // Pastikan result.url selalu jadi array murni
+        let urls = [];
+        if (Array.isArray(result.url)) {
+          urls = result.url;
+        } else if (typeof result.url === "string") {
+          urls = [result.url];
+        } else if (result.url && typeof result.url === "object") {
+          urls = Object.values(result.url); // fallback kalau bukan array tapi object
+        }
 
-        console.log("[igHandler2] URLs valid:", urls);
+        // Debug sebelum filter
+        console.log("🔍 [igHandler2] Sebelum filter:", urls);
 
-        console.log("🔹 [igHandler2] URLs terdeteksi:", urls.length, urls);
+        // Filter hanya URL valid
+        urls = urls
+          .map((u) => (u ? String(u).trim() : ""))
+          .filter((u) => u.startsWith("http"));
+
+        console.log("✅ [igHandler2] URLs terdeteksi:", urls);
 
         // Format angka ribuan
         const formatNumber = (num) => {
@@ -245,46 +256,42 @@ module.exports = {
           return num.toLocaleString("id-ID");
         };
 
-        // Buat caption
         const caption = `❤️ ${formatNumber(result.like)}\n💬 ${formatNumber(
           result.comment
         )}`;
-        console.log("🔹 [igHandler2] Caption:", caption);
+        console.log("📝 [igHandler2] Caption:", caption);
 
-        if (result.isVideo && urls.length) {
-          console.log("🎥 [igHandler2] Mengirim video...");
+        // Validasi hasil akhir
+        if (!urls.length) {
+          console.warn(
+            "⚠️ [igHandler2] Tidak ada URL valid atau format tidak dikenali."
+          );
+          return;
+        }
+
+        // Kirim hasil
+        if (result.isVideo) {
+          console.log("🎬 [igHandler2] Mengirim video...");
           await ctx.api.sendVideo(chatId, urls[0], {
             caption,
             supports_streaming: true,
           });
-          console.log("✅ [igHandler2] Video terkirim.");
-          return true;
+          return;
         }
 
-        if (!result.isVideo && urls.length) {
-          console.log("🖼️ [igHandler2] Mengirim foto...");
-          const groups = chunkArray(urls, 10);
-          for (const grp of groups) {
-            const mediaGroup = grp.map((u, i) => ({
-              type: "photo",
-              media: u,
-              caption: i === 0 ? caption : undefined,
-            }));
-            await ctx.api.sendMediaGroup(chatId, mediaGroup);
-            console.log("✅ [igHandler2] Grup foto terkirim:", grp.length);
-            await delay(1500);
-          }
-          console.log("✅ [igHandler2] Semua foto terkirim.");
-          return true;
+        console.log("🖼️ [igHandler2] Mengirim foto...");
+        const groups = chunkArray(urls, 10);
+        for (const grp of groups) {
+          const mediaGroup = grp.map((u, i) => ({
+            type: "photo",
+            media: u,
+            caption: i === 0 ? caption : undefined,
+          }));
+          await ctx.api.sendMediaGroup(chatId, mediaGroup);
+          await delay(1500);
         }
-
-        console.log(
-          "⚠️ [igHandler2] Tidak ada URL valid atau format tidak dikenali."
-        );
-        return false;
       } catch (err) {
-        console.error("❌ [igHandler2] Terjadi error:", err);
-        throw err;
+        console.error("💥 [igHandler2] Error:", err.message);
       }
     };
 
