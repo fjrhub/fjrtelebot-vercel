@@ -230,12 +230,6 @@ module.exports = {
         ? [result.url]
         : [];
 
-      // Format angka ribuan dengan titik
-      const formatNumber = (num) => {
-        if (typeof num !== "number") return "0";
-        return num.toLocaleString("id-ID");
-      };
-
       // Caption hanya dua baris (like & comment)
       const caption = `❤️ ${formatNumber(result.like)}\n💬 ${formatNumber(
         result.comment
