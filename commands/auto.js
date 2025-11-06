@@ -22,557 +22,589 @@ module.exports = {
     const isFacebook = facebookRegex.test(text);
     if (!isTikTok && !isInstagram && !isFacebook) return;
 
+    // delete original (user) message (best-effort)
     try {
       await ctx.api.deleteMessage(chatId, ctx.message.message_id);
     } catch (err) {
+      // ignore if can't delete
       console.warn("Could not delete original message:", err?.message);
     }
 
     const input = text;
-    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
     const toNumberFormat = (n) =>
       n === undefined || n === null
         ? "0"
         : n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
     const chunkArray = (arr, size) => {
       if (!Array.isArray(arr)) return [];
       const result = [];
-      for (let i = 0; i < arr.length; i += size)
+      for (let i = 0; i < arr.length; i += size) {
         result.push(arr.slice(i, i + size));
+      }
       return result;
     };
+
+    async function getWithTimeout(url, timeoutMs = 8000) {
+      const start = Date.now(); // ⏱️ mulai hitung waktu
+
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+        const res = await axios.get(url, { signal: controller.signal });
+        clearTimeout(timer);
+
+        const duration = ((Date.now() - start) / 1000).toFixed(2);
+        console.log(`✅ API fetched in ${duration}s`);
+        return res;
+      } catch (err) {
+        const duration = ((Date.now() - start) / 1000).toFixed(2);
+        if (err.name === "AbortError") {
+          console.warn(`⚠️ API request timed out after ${duration}s`);
+          throw new Error(`Request timeout after ${timeoutMs / 1000} seconds`);
+        }
+        console.error(`❌ API fetch failed after ${duration}s: ${err.message}`);
+        throw err;
+      }
+    }
+
+    // Fungsi delay sederhana
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    // Fungsi bantu untuk mempersingkat angka
     const formatNumber = (num) => {
       if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + "M";
       if (num >= 1_000) return (num / 1_000).toFixed(1) + "K";
       return num.toString();
     };
 
-    // ---------- HANDLERS ----------
+    // -------------------- HANDLERS --------------------
+
+    // TikTok handler variations
     const tthandler1 = async (ctx, chatId, data) => {
       if (!data?.data || !data.data.download)
         throw new Error("Invalid TikTok API response structure.");
+
       const { download, metadata } = data.data;
+
       const videos = Array.isArray(download.video)
         ? download.video.filter(Boolean)
         : [];
       const photos = Array.isArray(download.photo)
         ? download.photo.filter(Boolean)
         : [];
+
       if (!videos.length && !photos.length)
         throw new Error("No downloadable media found from TikTok API.");
 
+      // Ambil statistik
       const stats = metadata?.stats || {};
-      const caption = `❤️ ${formatNumber(
-        stats.likeCount || 0
-      )} ▶️ ${formatNumber(stats.playCount || 0)} 💬 ${formatNumber(
-        stats.commentCount || 0
-      )} ↗️ ${formatNumber(stats.shareCount || 0)}`;
+      const like = stats.likeCount || 0;
+      const play = stats.playCount || 0;
+      const comment = stats.commentCount || 0;
+      const share = stats.shareCount || 0;
 
+      // Format caption (pakai emoji + format singkat)
+      const caption = `❤️ ${formatNumber(like)} ▶️ ${formatNumber(
+        play
+      )} 💬 ${formatNumber(comment)} ↗️ ${formatNumber(share)}`;
+
+      // Jika ada video
       if (videos.length) {
-        await ctx.api.sendVideo(chatId, videos[1] || videos[0], { caption });
+        const firstVideo = videos[1];
+        try {
+          await ctx.api.sendVideo(chatId, firstVideo, { caption });
+        } catch (e) {
+          console.error("Gagal kirim video:", e.message);
+          throw e; // ⬅️ tambahkan ini agar error dilempar keluar
+        }
         return;
       }
+
+      // Jika ada foto
       if (photos.length) {
         const groups = chunkArray(photos, 10);
+
         for (const grp of groups) {
           const mediaGroup = grp.map((url, i) => ({
             type: "photo",
             media: url,
-            caption: i === 0 ? caption : undefined,
+            caption: i === 0 ? caption : undefined, // caption hanya di foto pertama
           }));
-          await ctx.api.sendMediaGroup(chatId, mediaGroup);
+
+          try {
+            await ctx.api.sendMediaGroup(chatId, mediaGroup);
+          } catch (e) {
+            if (
+              e.error_code === 429 ||
+              e.description?.includes("Too Many Requests")
+            ) {
+              console.warn("⚠️ Rate limited! Waiting 5 seconds...");
+              await delay(5000); // tunggu 5 detik kalau rate limit
+            } else {
+              console.error("❌ Gagal kirim media group:", e.message);
+            }
+          }
+
+          // Delay 1.5 detik antar batch kiriman
           await delay(1500);
         }
       }
     };
 
     const tthandler2 = async (ctx, chatId, data) => {
-      if (!data || typeof data !== "object" || !data.metadata)
+      if (!data || typeof data !== "object" || !data.metadata) {
         throw new Error("Invalid data format: metadata missing.");
+      }
+
       const md = data.metadata;
+      const statsOnly = [
+        `Views: ${toNumberFormat(md.view)}`,
+        `Comments: ${toNumberFormat(md.comment)}`,
+        `Shares: ${toNumberFormat(md.share)}`,
+        `Downloads: ${toNumberFormat(md.download)}`,
+      ].join("\n");
+
       const caption = `${
         md.durasi && md.durasi > 0 ? `Duration: ${md.durasi}s\n` : ""
-      }Views: ${toNumberFormat(md.view)}\nComments: ${toNumberFormat(
-        md.comment
-      )}\nShares: ${toNumberFormat(md.share)}\nDownloads: ${toNumberFormat(
-        md.download
-      )}`;
+      }${statsOnly}`;
 
+      // Jika ada image slide
       if (
         Array.isArray(data.media?.image_slide) &&
         data.media.image_slide.length > 0
       ) {
         const groups = chunkArray(data.media.image_slide, 10);
+
         for (const grp of groups) {
-          const mediaGroup = grp.map((url, i) => ({
+          const mediaGroup = grp.map((url, idx) => ({
             type: "photo",
             media: url,
-            caption: i === 0 ? caption : undefined,
+            ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
           }));
-          await ctx.api.sendMediaGroup(chatId, mediaGroup);
+
+          try {
+            await ctx.api.sendMediaGroup(chatId, mediaGroup);
+          } catch (err) {
+            console.error(
+              "⚠️ Failed to send media group:",
+              err.description || err.message
+            );
+          }
+
+          // Delay 1.5 detik antar batch kiriman foto
           await delay(1500);
         }
         return;
       }
 
+      // Jika ada video
       if (data.media?.play && md.durasi > 0) {
-        await ctx.api.sendVideo(chatId, data.media.play, {
-          caption,
-          supports_streaming: true,
-        });
-        return;
+        try {
+          await ctx.api.sendVideo(chatId, data.media.play, {
+            caption,
+            parse_mode: "Markdown",
+            supports_streaming: true,
+          });
+        } catch (err) {
+          console.error(
+            "⚠️ Failed to send video:",
+            err.description || err.message
+          );
+        }
+        return; // tanpa delay di bagian video
       }
+
       throw new Error("API 2 returned no valid downloadable content.");
     };
 
     const tthandler3 = async (ctx, chatId, data) => {
+      if (!data || typeof data !== "object") {
+        throw new Error("Invalid API 3 data.");
+      }
+
       const photos = Array.isArray(data.data)
-        ? data.data.filter((i) => i.type === "photo")
+        ? data.data.filter((item) => item.type === "photo")
         : [];
       const video = Array.isArray(data.data)
         ? data.data.find(
-            (i) => i.type === "nowatermark" || i.type === "nowatermark_hd"
+            (item) =>
+              item.type === "nowatermark" || item.type === "nowatermark_hd"
           )
         : null;
+
       const stats = data.stats || {};
-      const caption = `👁 ${stats.views ?? "?"} ❤️ ${stats.likes ?? "?"} 💬 ${
-        stats.comment ?? "?"
-      } 🔁 ${stats.share ?? "?"}`;
+      const statsText = [
+        `👁 Views: ${stats.views ?? "?"}`,
+        `❤️ Likes: ${stats.likes ?? "?"}`,
+        `💬 Comments: ${stats.comment ?? "?"}`,
+        `🔁 Shares: ${stats.share ?? "?"}`,
+        `⬇️ Downloads: ${stats.download ?? "?"}`,
+      ].join("\n");
+
+      const caption = `${statsText}`;
+
+      // Jika foto
       if (photos.length > 0) {
         const groups = chunkArray(
           photos.map((p) => p.url),
           10
         );
+
         for (const grp of groups) {
           const mediaGroup = grp.map((url, idx) => ({
             type: "photo",
             media: url,
-            caption: idx === 0 ? caption : undefined,
+            ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
           }));
+
           await ctx.api.sendMediaGroup(chatId, mediaGroup);
-          await delay(1500);
+          await delay(1500); // Delay kecil untuk Telegram rate limit
         }
+
         return;
       }
+
+      // Jika video
       if (video?.url) {
         await ctx.api.sendVideo(chatId, video.url, {
           caption,
+          parse_mode: "Markdown",
           supports_streaming: true,
         });
         return;
       }
+
       throw new Error("API 3 returned no valid downloadable content.");
     };
 
+    // Facebook handlers
     const fbHandler1 = async (ctx, chatId, data) => {
-      const hd = data.data?.find(
-        (i) => i.format === "mp4" && i.resolution === "HD"
+      if (!data || !Array.isArray(data.data))
+        throw new Error("Invalid FB API 1 format.");
+      const hdMp4Video = data.data.find(
+        (item) => item.format === "mp4" && item.resolution === "HD"
       );
-      if (!hd?.url) throw new Error("HD MP4 not found.");
-      await ctx.api.sendVideo(chatId, hd.url);
+      if (!hdMp4Video?.url) throw new Error("HD MP4 URL not found.");
+      await ctx.api.sendVideo(chatId, hdMp4Video.url);
     };
+
     const fbHandler2 = async (ctx, chatId, data) => {
-      const videoUrl = data.media?.[2] || data.media?.[0];
-      if (!videoUrl) throw new Error("No HD video URL found.");
+      if (!data) throw new Error("Invalid FB API 2 format.");
+      const videoUrl = data.media?.[2] || data.media?.[0] || null;
+      if (!videoUrl) throw new Error("No HD video URL found in API 2.");
       await ctx.api.sendVideo(chatId, videoUrl);
     };
+
     const fbHandler3 = async (ctx, chatId, data) => {
-      const videoUrl = data.result?.download?.hd;
-      if (!videoUrl) throw new Error("No HD URL from API 3.");
+      if (!data?.result?.download?.hd)
+        throw new Error("Tidak ada URL video HD dari API 3 (Vreden).");
+
+      const videoUrl = data.result.download.hd;
+      const durasion = data.result.durasi || "Video durasion";
+      const thumb = data.result.thumbnail;
+
+      // Kirim video dengan caption dan thumbnail (jika ada)
       await ctx.api.sendVideo(chatId, videoUrl, {
-        caption: `Duration: ${data.result.durasi || "?"}s`,
+        caption: `Duration: ${durasion}s`,
+        parse_mode: "Markdown",
+        thumbnail: thumb,
       });
     };
 
-    async function igHandler1(ctx, chatId, payload) {
-      try {
-        if (!payload || typeof payload !== "object") {
-          console.warn("⚠️ [igHandler1] Payload kosong atau bukan object.");
-          return ctx.reply("⚠️ Gagal membaca data dari API Instagram 1.");
-        }
-
-        // Ambil URL dari payload (seperti di igHandler2)
-        const urls = Array.isArray(payload.url)
-          ? payload.url
-          : typeof payload.url === "string"
-          ? [payload.url]
-          : [];
-
-        const validUrls = urls.filter(
-          (u) => typeof u === "string" && u.startsWith("http")
+    // Instagram handlers
+    const igHandler1 = async (ctx, chatId, data) => {
+      if (!data || !Array.isArray(data.data))
+        throw new Error(
+          "Invalid API format: data field not found or not array."
         );
 
-        if (validUrls.length === 0) {
-          console.warn("⚠️ [igHandler1] Tidak ada URL valid ditemukan.");
-          return ctx.reply(
-            "⚠️ Tidak ada media yang bisa dikirim dari Instagram API 1."
-          );
-        }
+      const results = data.data;
+      if (!results.length) throw new Error("API returned empty media list.");
 
-        // Tentukan video atau foto
-        const video = validUrls.find((u) => u.includes(".mp4"));
-        const photos = validUrls.filter((u) => !u.includes(".mp4"));
+      // Ambil semua URL valid
+      const urls = results.map((i) => i?.url).filter(Boolean);
+      if (!urls.length) throw new Error("No valid media URLs found.");
 
-        // Kirim media seperti igHandler1
-        if (video) {
-          console.log("🎞️ [igHandler1] Mengirim video...");
-          await ctx.api.sendVideo(chatId, video, {
-            supports_streaming: true,
-            caption: `❤️ ${payload.like || 0}\n💬 ${payload.comment || 0}`,
-          });
-          return;
-        }
+      // Cek apakah ada video (file .mp4)
+      const video = urls.find((u) => u.includes(".mp4"));
+      const photos = urls.filter((u) => !u.includes(".mp4"));
 
-        if (photos.length > 0) {
-          console.log("🖼️ [igHandler1] Mengirim foto...");
-          const chunkArray = (arr, size) => {
-            const chunks = [];
-            for (let i = 0; i < arr.length; i += size)
-              chunks.push(arr.slice(i, i + size));
-            return chunks;
-          };
+      if (video) {
+        // Kirim video
+        await ctx.api.sendVideo(chatId, video);
+        return;
+      }
 
-          const groups = chunkArray(photos, 10);
-          for (const grp of groups) {
-            const mediaGroup = grp.map((url, idx) => ({
-              type: "photo",
-              media: url,
-              caption:
-                idx === 0
-                  ? `❤️ ${payload.like || 0}\n💬 ${payload.comment || 0}`
-                  : undefined,
-            }));
+      if (photos.length) {
+        // Bagi foto menjadi grup berisi maksimal 10 item
+        const groups = chunkArray(photos, 10);
+
+        for (const grp of groups) {
+          const mediaGroup = grp.map((url) => ({ type: "photo", media: url }));
+
+          try {
             await ctx.api.sendMediaGroup(chatId, mediaGroup);
-            await new Promise((r) => setTimeout(r, 1500));
+          } catch (err) {
+            console.error(
+              "Gagal kirim media group:",
+              err.description || err.message
+            );
           }
-          return;
+
+          // Delay 1.5 detik sebelum kirim grup berikutnya
+          await delay(1500);
         }
 
-        console.warn("⚠️ [igHandler1] Tidak ada media video/foto ditemukan.");
-        await ctx.reply(
-          "⚠️ Tidak ada media yang bisa dikirim dari Instagram API 1."
-        );
-      } catch (err) {
-        console.error("❌ [igHandler1] Error:", err);
-        await ctx.reply(
-          "⚠️ Terjadi kesalahan saat mengirim media dari IG API 1."
-        );
+        return;
       }
-    }
 
-    // ================================
-    // Instagram Handler 2 (Archive)
-    // ================================
-    async function igHandler2(ctx, chatId, payload) {
-      try {
-        if (!payload || typeof payload !== "object") {
-          console.warn("⚠️ [igHandler2] Payload kosong atau bukan object.");
-          return ctx.reply("⚠️ Gagal membaca data dari API Instagram Archive.");
-        }
+      throw new Error("No media content detected.");
+    };
 
-        // Ambil URL
-        const urls = Array.isArray(payload.url)
-          ? payload.url
-          : typeof payload.url === "string"
-          ? [payload.url]
-          : [];
-
-        const validUrls = urls.filter(
-          (u) => typeof u === "string" && u.startsWith("http")
-        );
-        if (validUrls.length === 0) {
-          console.warn("⚠️ [igHandler2] Tidak ada URL valid.");
-          return ctx.reply(
-            "⚠️ Tidak ada media yang ditemukan dari Instagram Archive."
-          );
-        }
-
-        // Caption hanya like & comment
-        const caption = `❤️ ${payload.like || 0}\n💬 ${payload.comment || 0}`;
-
-        if (payload.isVideo) {
-          // Video hanya 1 URL
-          await ctx.api.sendVideo(chatId, validUrls[0], {
-            caption,
-            supports_streaming: true,
-          });
-        } else {
-          // Foto
-          if (validUrls.length === 1) {
-            await ctx.api.sendPhoto(chatId, validUrls[0], { caption });
-          } else {
-            // Bagi per 10 foto untuk sendMediaGroup
-            const chunkArray = (arr, size) => {
-              const chunks = [];
-              for (let i = 0; i < arr.length; i += size)
-                chunks.push(arr.slice(i, i + size));
-              return chunks;
-            };
-            const groups = chunkArray(validUrls, 10);
-
-            for (const grp of groups) {
-              const mediaGroup = grp.map((url, idx) => ({
-                type: "photo",
-                media: url,
-                caption: idx === 0 ? caption : undefined, // caption hanya di media pertama
-              }));
-              await ctx.api.sendMediaGroup(chatId, mediaGroup);
-              await new Promise((r) => setTimeout(r, 1500));
-            }
-          }
-        }
-      } catch (err) {
-        await ctx.reply("⚠️ Terjadi kesalahan saat mengirim media Instagram.");
+    const igHandler2 = async (ctx, chatId, data) => {
+      if (!data || typeof data !== "object") {
+        throw new Error("Invalid IG API 2 format.");
       }
-    }
 
-    const igHandler3 = async (ctx, chatId, data) => {
-      console.log("📥 [IG Handler 3] Raw data:", JSON.stringify(data, null, 2));
+      const result = data.result || {};
+      const mediaUrls = Array.isArray(result.url)
+        ? result.url
+        : typeof result.url === "string"
+        ? [result.url]
+        : [];
 
-      const media = data?.result?.data || [];
-      const stats = data?.result?.statistics || {};
+      const isVideo = !!result.isVideo;
+      const caption = `${toNumberFormat(result.like)} Likes`;
 
-      console.log("📊 [IG Handler 3] Stats:", stats);
-      console.log("📦 [IG Handler 3] Media count:", media.length);
-
-      if (!Array.isArray(media) || !media.length)
-        throw new Error("Invalid IG API 3 media data.");
-
-      const images = media.filter((i) => i.type === "image").map((i) => i.url);
-      const videos = media.filter((i) => i.type === "video").map((i) => i.url);
-
-      console.log("🎞️ [IG Handler 3] Videos:", videos);
-      console.log("🖼️ [IG Handler 3] Images:", images);
-
-      const caption = [
-        stats.like_count ? `❤️ ${stats.like_count}` : null,
-        stats.comment_count ? `💬 ${stats.comment_count}` : null,
-        stats.play_count ? `▶️ ${stats.play_count}` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-
-      if (videos.length) {
-        console.log("📤 Sending video:", videos[0]);
-        await ctx.api.sendVideo(chatId, videos[0], {
+      if (isVideo && mediaUrls.length) {
+        await ctx.api.sendVideo(chatId, mediaUrls[0], {
           caption,
+          parse_mode: "Markdown",
           supports_streaming: true,
         });
         return;
       }
 
+      if (!isVideo && mediaUrls.length) {
+        const groups = chunkArray(mediaUrls, 10);
+
+        for (const grp of groups) {
+          const mediaGroup = grp.map((url, idx) => ({
+            type: "photo",
+            media: url,
+            ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
+          }));
+
+          await ctx.api.sendMediaGroup(chatId, mediaGroup);
+          await delay(1500); // delay hanya di foto
+        }
+
+        return;
+      }
+
+      throw new Error("IG API 2 returned no valid media.");
+    };
+
+    const igHandler3 = async (ctx, chatId, data) => {
+      const mediaItems = Array.isArray(data?.result?.data)
+        ? data.result.data
+        : [];
+      const stats = data?.result?.statistics || {};
+
+      if (!mediaItems.length) {
+        throw new Error("IG API 3 returned empty media array.");
+      }
+
+      const images = mediaItems
+        .filter((i) => i.type === "image" && i.url)
+        .map((i) => i.url);
+
+      const videos = mediaItems
+        .filter((i) => i.type === "video" && i.url)
+        .map((i) => i.url);
+
+      // 🔹 Format statistik (hanya yang ada nilainya)
+      const statLines = [
+        stats.like_count && stats.like_count !== "-"
+          ? `❤️ ${stats.like_count}`
+          : null,
+        stats.comment_count && stats.comment_count !== "-"
+          ? `💬 ${stats.comment_count}`
+          : null,
+        stats.play_count && stats.play_count !== "-"
+          ? `▶️ ${stats.play_count}`
+          : null,
+        stats.share_count && stats.share_count !== "-"
+          ? `🔁 ${stats.share_count}`
+          : null,
+        stats.save_count && stats.save_count !== "-"
+          ? `💾 ${stats.save_count}`
+          : null,
+      ].filter(Boolean);
+
+      const statCaption = statLines.length
+        ? statLines.join(" · ")
+        : "ℹ️ No statistics available.";
+
+      // --- Jika video tersedia ---
+      if (videos.length) {
+        await ctx.api.sendVideo(chatId, videos[0], {
+          supports_streaming: true,
+          caption: statCaption,
+        });
+        return;
+      }
+
+      // --- Jika foto tersedia ---
       if (images.length) {
-        console.log("📤 Sending photos...");
         const groups = chunkArray(images, 10);
         for (const grp of groups) {
-          await ctx.api.sendMediaGroup(
-            chatId,
-            grp.map((u, i) => ({
-              type: "photo",
-              media: u,
-              caption: i === 0 ? caption : undefined,
-            }))
-          );
-          await delay(1500);
+          const mediaGroup = grp.map((u) => ({
+            type: "photo",
+            media: u,
+            caption: statCaption, // caption hanya di foto pertama, opsional
+          }));
+          await ctx.api.sendMediaGroup(chatId, mediaGroup);
+          await delay(1500); // jeda agar tidak spam API Telegram
         }
         return;
       }
 
-      throw new Error("No downloadable media found in IG API 3.");
+      throw new Error("IG API 3 returned unsupported media.");
     };
 
-    // ---------- MAIN FLOW DENGAN ABORT ----------
     try {
       const apis = [];
 
-      // ✅ Konfigurasi toggle untuk tiap API
-      const apiToggle = {
-        tiktok: {
-          siputzx: true,
-          archive: true,
-          vreden: true,
-        },
-        instagram: {
-          siputzx: true,
-          archive: false,
-          vreden: false,
-        },
-        facebook: {
-          siputzx: true,
-          archive: true,
-          vreden: true,
-        },
+      // Konfigurasi aktif per platform
+      const enableStatus = {
+        tiktok: { siputzx: true, archive: false, vreden: true },
+        instagram: { siputzx: false, archive: true, vreden: false },
+        facebook: { siputzx: true, archive: true, vreden: true },
       };
 
-      // ================================
-      // TikTok
-      // ================================
       if (isTikTok) {
-        if (apiToggle.tiktok.siputzx)
-          apis.push({
+        const active = enableStatus.tiktok;
+        apis.push(
+          active.siputzx && {
             url: createUrl(
               "siputzx",
               `/api/d/tiktok/v2?url=${encodeURIComponent(input)}`
             ),
             handler: tthandler1,
             label: "Siputzx - TikTok",
-          });
-
-        if (apiToggle.tiktok.archive)
-          apis.push({
+          },
+          active.archive && {
             url: createUrl(
               "archive",
               `/api/download/tiktok?url=${encodeURIComponent(input)}`
             ),
             handler: tthandler2,
             label: "Archive - TikTok",
-          });
-
-        if (apiToggle.tiktok.vreden)
-          apis.push({
+          },
+          active.vreden && {
             url: createUrl(
               "vreden",
               `/api/v1/download/tiktok?url=${encodeURIComponent(input)}`
             ),
             handler: tthandler3,
             label: "Vreden - TikTok",
-          });
+          }
+        );
       }
 
-      // ================================
-      // Instagram
-      // ================================
       if (isInstagram) {
-        if (apiToggle.instagram.siputzx)
-          apis.push({
+        const active = enableStatus.instagram;
+        apis.push(
+          active.siputzx && {
             url: createUrl(
               "siputzx",
               `/api/d/igdl?url=${encodeURIComponent(input)}`
             ),
             handler: igHandler1,
             label: "Siputzx - Instagram",
-          });
-
-        if (apiToggle.instagram.archive)
-          apis.push({
+          },
+          active.archive && {
             url: createUrl(
               "archive",
               `/api/download/instagram?url=${encodeURIComponent(input)}`
             ),
             handler: igHandler2,
             label: "Archive - Instagram",
-          });
-
-        if (apiToggle.instagram.vreden)
-          apis.push({
+          },
+          active.vreden && {
             url: createUrl(
               "vreden",
               `/api/v1/download/instagram?url=${encodeURIComponent(input)}`
             ),
             handler: igHandler3,
             label: "Vreden - Instagram",
-          });
+          }
+        );
       }
 
-      // ================================
-      // Facebook
-      // ================================
       if (isFacebook) {
-        if (apiToggle.facebook.siputzx)
-          apis.push({
+        const active = enableStatus.facebook;
+        apis.push(
+          active.siputzx && {
             url: createUrl(
               "siputzx",
               `/api/d/facebook?url=${encodeURIComponent(input)}`
             ),
             handler: fbHandler1,
             label: "Siputzx - Facebook",
-          });
-
-        if (apiToggle.facebook.archive)
-          apis.push({
+          },
+          active.archive && {
             url: createUrl(
               "archive",
               `/api/download/facebook?url=${encodeURIComponent(input)}`
             ),
             handler: fbHandler2,
             label: "Archive - Facebook",
-          });
-
-        if (apiToggle.facebook.vreden)
-          apis.push({
+          },
+          active.vreden && {
             url: createUrl(
               "vreden",
               `/api/v1/download/facebook?url=${encodeURIComponent(input)}`
             ),
             handler: fbHandler3,
             label: "Vreden - Facebook",
-          });
-      }
-
-      // ================================
-      // Eksekusi API
-      // ================================
-      if (apis.length === 0) {
-        console.log("🚫 Semua API dinonaktifkan untuk platform ini.");
-        return;
-      }
-
-      const controllers = apis.map(() => new AbortController());
-      let finished = false;
-
-      const requests = apis.map((api, idx) =>
-        (async () => {
-          const start = Date.now();
-          try {
-            const res = await axios.get(api.url, {
-              signal: controllers[idx].signal,
-              timeout: 8000,
-            });
-
-            if (finished) return;
-            finished = true;
-
-            const data = res.data;
-            if (!data || !data.status)
-              throw new Error(`Invalid response from ${api.label}`);
-
-            // ✅ Extract payload safely
-            let payload = {};
-            if (data?.result && typeof data.result === "object") {
-              payload = data.result;
-            } else if (data?.data && typeof data.data === "object") {
-              payload = data.data;
-            } else {
-              payload = data;
-            }
-
-            console.log(`🔍 [${api.label}] Data mentah dari API:`, data);
-            console.log(
-              `📦 [${api.label}] Payload final dikirim ke handler:`,
-              payload
-            );
-
-            await api.handler(ctx, chatId, payload);
-
-            controllers.forEach((c, i) => i !== idx && c.abort());
-
-            const duration = ((Date.now() - start) / 1000).toFixed(2);
-            console.log(`✅ ${api.label} sukses (${duration}s)`);
-            return api.label;
-          } catch (err) {
-            if (err.name === "CanceledError" || err.name === "AbortError")
-              return;
-            throw err;
           }
-        })()
-      );
+        );
+      }
 
-      const result = await Promise.any(requests);
-      console.log(`🎯 API tercepat: ${result || "unknown"}`);
-      return;
+      // Hapus false/null
+      const validApis = apis.filter(Boolean);
+      if (validApis.length === 0) return;
+
+      let success = false;
+      for (const api of validApis) {
+        const start = Date.now();
+        try {
+          const res = await getWithTimeout(api.url, 8000);
+          const data = res.data;
+          if (!data || !data.status) throw new Error("Invalid response");
+
+          await api.handler(ctx, chatId, data.result || data.data);
+          const duration = ((Date.now() - start) / 1000).toFixed(2);
+          console.log(`✅ ${api.label} success in ${duration}s`);
+          success = true;
+          break;
+        } catch (err) {
+          console.warn(`⚠️ ${api.label} failed: ${err.message}`);
+          continue;
+        }
+      }
+
+      if (!success) {
+        await ctx.reply("⚠️ Gagal memproses link dari semua sumber API.");
+      }
     } catch (err) {
-      console.error("❌ Semua API gagal:", err.message);
-      await ctx.reply("⚠️ Gagal memproses link dari semua sumber API.");
+      console.error("❌ Fatal Error:", err);
+      await ctx.reply("⚠️ Terjadi kesalahan saat memproses permintaan.");
     }
   },
 };
