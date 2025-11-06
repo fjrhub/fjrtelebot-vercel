@@ -185,41 +185,41 @@ module.exports = {
     };
 
     const igHandler1 = async (ctx, chatId, data) => {
-      console.log("📥 [IG Handler 1] Raw data:", JSON.stringify(data, null, 2));
-
       const results = data.data;
-      if (!Array.isArray(results) || !results.length)
-        throw new Error("Invalid IG API 1 data structure.");
+      if (!Array.isArray(results) || !results.length) return;
 
       const urls = results.map((i) => i?.url).filter(Boolean);
-      console.log("🔗 [IG Handler 1] All URLs:", urls);
+      if (!urls.length) return;
 
       const video = urls.find((u) => u.includes(".mp4"));
       const photos = urls.filter((u) => !u.includes(".mp4"));
 
-      console.log("🎞️ [IG Handler 1] Video URL:", video || "None");
-      console.log("🖼️ [IG Handler 1] Photo URLs:", photos);
+      const formatNumber = (num) =>
+        typeof num === "number" ? num.toLocaleString("id-ID") : "0";
+      const caption = `❤️ ${formatNumber(data.like)}\n💬 ${formatNumber(
+        data.comment
+      )}`;
 
       if (video) {
-        console.log("📤 Sending video...");
-        await ctx.api.sendVideo(chatId, video);
+        await ctx.api.sendVideo(chatId, video, {
+          caption,
+          supports_streaming: true,
+        });
         return;
       }
 
       if (photos.length) {
-        console.log("📤 Sending photos in groups of 10...");
         const groups = chunkArray(photos, 10);
         for (const grp of groups) {
-          await ctx.api.sendMediaGroup(
-            chatId,
-            grp.map((u) => ({ type: "photo", media: u }))
-          );
+          const mediaGroup = grp.map((u, i) => ({
+            type: "photo",
+            media: u,
+            caption: i === 0 ? caption : undefined,
+          }));
+          await ctx.api.sendMediaGroup(chatId, mediaGroup);
           await delay(1500);
         }
-        return;
       }
-
-      throw new Error("No media (video/photo) found in IG API 1.");
     };
 
     // ================================
@@ -227,7 +227,6 @@ module.exports = {
     // ================================
     async function igHandler2(ctx, chatId, payload) {
       try {
-
         if (!payload || typeof payload !== "object") {
           console.warn("⚠️ [igHandler2] Payload kosong atau bukan object.");
           return ctx.reply("⚠️ Gagal membaca data dari API Instagram Archive.");
@@ -284,7 +283,6 @@ module.exports = {
             }
           }
         }
-
       } catch (err) {
         await ctx.reply("⚠️ Terjadi kesalahan saat mengirim media Instagram.");
       }
