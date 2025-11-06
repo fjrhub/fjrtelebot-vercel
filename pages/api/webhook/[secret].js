@@ -1,3 +1,4 @@
+// file: /pages/api/webhook/[secret].js
 import bot from "../../../lib/bot.js";
 import { handleMessage, handleCallback } from "../../../lib/handler.js";
 
@@ -5,11 +6,11 @@ export const config = {
   api: { bodyParser: true },
 };
 
-// Pastikan listener hanya didaftarkan sekali
-if (!global._listenersInitialized) {
+// Pasang listener hanya SEKALI
+if (!bot._handlersSet) {
   bot.on("message", handleMessage);
   bot.on("callback_query", handleCallback);
-  global._listenersInitialized = true;
+  bot._handlersSet = true; // penanda agar tidak double pasang
 }
 
 export default async function handler(req, res) {
@@ -24,17 +25,9 @@ export default async function handler(req, res) {
   if (secret !== expected) return res.status(401).send("Unauthorized");
 
   try {
-    // Inisialisasi bot hanya sekali
-    if (!bot.isInited) {
-      await bot.init();
-      bot.isInited = true;
-    }
-
-    // Proses update Telegram
+    await bot.init();
     await bot.handleUpdate(req.body);
-
-    // Respon cepat agar tidak diulang
-    return res.status(200).send("OK ✅");
+    return res.status(200).send("OK");
   } catch (err) {
     console.error("❌ Webhook handler error:", err);
     return res.status(500).send("Internal Server Error");
