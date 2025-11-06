@@ -222,78 +222,61 @@ module.exports = {
       throw new Error("No media (video/photo) found in IG API 1.");
     };
 
-    const igHandler2 = async (ctx, chatId, data) => {
+    // ================================
+    // Instagram Handler 2 (Archive)
+    // ================================
+    async function igHandler2(ctx, chatId, payload) {
       try {
-        const result = data?.result || {};
-        console.log(
-          "🔹 [igHandler2] Diterima data:",
-          JSON.stringify(result, null, 2)
-        );
+        console.log("🔹 [igHandler2] Diterima data:", payload);
 
-        // Pastikan result.url selalu jadi array murni
-        let urls = [];
-        if (Array.isArray(result.url)) {
-          urls = result.url;
-        } else if (typeof result.url === "string") {
-          urls = [result.url];
-        } else if (result.url && typeof result.url === "object") {
-          urls = Object.values(result.url); // fallback kalau bukan array tapi object
+        // Cegah payload kosong
+        if (!payload || typeof payload !== "object") {
+          console.warn("⚠️ [igHandler2] Payload kosong atau bukan object.");
+          return ctx.reply("⚠️ Gagal membaca data dari API Instagram Archive.");
         }
 
-        // Debug sebelum filter
+        // Ambil URL
+        const urls = Array.isArray(payload.url)
+          ? payload.url
+          : typeof payload.url === "string"
+          ? [payload.url]
+          : [];
+
         console.log("🔍 [igHandler2] Sebelum filter:", urls);
 
-        // Filter hanya URL valid
-        urls = urls
-          .map((u) => (u ? String(u).trim() : ""))
-          .filter((u) => u.startsWith("http"));
+        const validUrls = urls.filter(
+          (u) => typeof u === "string" && u.startsWith("http")
+        );
+        console.log("✅ [igHandler2] URLs terdeteksi:", validUrls);
 
-        console.log("✅ [igHandler2] URLs terdeteksi:", urls);
+        const caption = payload.caption || "(tidak ada caption)";
+        const like = payload.like || 0;
+        const comment = payload.comment || 0;
 
-        // Format angka ribuan
-        const formatNumber = (num) => {
-          if (typeof num !== "number") return "0";
-          return num.toLocaleString("id-ID");
-        };
+        console.log(`📝 [igHandler2] Caption: ❤️ ${like} | 💬 ${comment}`);
 
-        const caption = `❤️ ${formatNumber(result.like)}\n💬 ${formatNumber(
-          result.comment
-        )}`;
-        console.log("📝 [igHandler2] Caption:", caption);
-
-        // Validasi hasil akhir
-        if (!urls.length) {
+        if (validUrls.length === 0) {
           console.warn(
             "⚠️ [igHandler2] Tidak ada URL valid atau format tidak dikenali."
           );
-          return;
+          return ctx.reply(
+            "⚠️ Tidak ada media yang ditemukan dari Instagram Archive."
+          );
         }
 
-        // Kirim hasil
-        if (result.isVideo) {
-          console.log("🎬 [igHandler2] Mengirim video...");
-          await ctx.api.sendVideo(chatId, urls[0], {
-            caption,
-            supports_streaming: true,
+        // Kirim tiap video
+        for (const url of validUrls) {
+          await ctx.replyWithVideo(url, {
+            caption: `${caption}\n\n❤️ ${like} | 💬 ${comment}`,
           });
-          return;
         }
 
-        console.log("🖼️ [igHandler2] Mengirim foto...");
-        const groups = chunkArray(urls, 10);
-        for (const grp of groups) {
-          const mediaGroup = grp.map((u, i) => ({
-            type: "photo",
-            media: u,
-            caption: i === 0 ? caption : undefined,
-          }));
-          await ctx.api.sendMediaGroup(chatId, mediaGroup);
-          await delay(1500);
-        }
+        console.log("✅ [igHandler2] Pengiriman selesai.\n");
       } catch (err) {
-        console.error("💥 [igHandler2] Error:", err.message);
+        console.error("❌ [igHandler2] Gagal:", err.message);
+        await ctx.reply("⚠️ Terjadi kesalahan saat mengirim media Instagram.");
       }
-    };
+    }
 
     const igHandler3 = async (ctx, chatId, data) => {
       console.log("📥 [IG Handler 3] Raw data:", JSON.stringify(data, null, 2));
