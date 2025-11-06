@@ -227,7 +227,6 @@ module.exports = {
     // ================================
     async function igHandler2(ctx, chatId, payload) {
       try {
-        console.log("🔹 [igHandler2] Diterima data:", payload);
 
         if (!payload || typeof payload !== "object") {
           console.warn("⚠️ [igHandler2] Payload kosong atau bukan object.");
@@ -286,9 +285,7 @@ module.exports = {
           }
         }
 
-        console.log("✅ [igHandler2] Pengiriman selesai.\n");
       } catch (err) {
-        console.error("❌ [igHandler2] Gagal:", err.message);
         await ctx.reply("⚠️ Terjadi kesalahan saat mengirim media Instagram.");
       }
     }
