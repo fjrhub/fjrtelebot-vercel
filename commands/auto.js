@@ -230,11 +230,12 @@ module.exports = {
         );
 
         const result = data?.result || {};
-        const urls = Array.isArray(result.url)
-          ? result.url
-          : result.url
-          ? [result.url]
-          : [];
+        // Pastikan URL valid dan tidak kosong
+        const urls = (
+          Array.isArray(result.url) ? result.url : [result.url]
+        ).filter((u) => typeof u === "string" && u.trim().startsWith("http"));
+
+        console.log("[igHandler2] URLs valid:", urls);
 
         console.log("🔹 [igHandler2] URLs terdeteksi:", urls.length, urls);
 
