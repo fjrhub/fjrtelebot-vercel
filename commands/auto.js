@@ -260,7 +260,11 @@ module.exports = {
           await ctx.api.sendMediaGroup(chatId, mediaGroup);
           await delay(1500);
         }
+        return true; // ✅ tambahkan ini
       }
+
+      // fallback agar selalu ada return
+      return true;
     };
 
     const igHandler3 = async (ctx, chatId, data) => {
