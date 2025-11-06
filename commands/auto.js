@@ -316,91 +316,137 @@ module.exports = {
     try {
       const apis = [];
 
-      if (isTikTok)
-        apis.push(
-          {
+      // ✅ Konfigurasi toggle untuk tiap API
+      const apiToggle = {
+        tiktok: {
+          siputzx: true,
+          archive: true,
+          vreden: false, // ubah ke false untuk menonaktifkan sementara
+        },
+        instagram: {
+          siputzx: true,
+          archive: true,
+          vreden: true,
+        },
+        facebook: {
+          siputzx: true,
+          archive: false,
+          vreden: true,
+        },
+      };
+
+      // ================================
+      // TikTok
+      // ================================
+      if (isTikTok) {
+        if (apiToggle.tiktok.siputzx)
+          apis.push({
             url: createUrl(
               "siputzx",
               `/api/d/tiktok/v2?url=${encodeURIComponent(input)}`
             ),
             handler: tthandler1,
             label: "Siputzx - TikTok",
-          },
-          {
+          });
+
+        if (apiToggle.tiktok.archive)
+          apis.push({
             url: createUrl(
               "archive",
               `/api/download/tiktok?url=${encodeURIComponent(input)}`
             ),
             handler: tthandler2,
             label: "Archive - TikTok",
-          },
-          {
+          });
+
+        if (apiToggle.tiktok.vreden)
+          apis.push({
             url: createUrl(
               "vreden",
               `/api/v1/download/tiktok?url=${encodeURIComponent(input)}`
             ),
             handler: tthandler3,
             label: "Vreden - TikTok",
-          }
-        );
+          });
+      }
 
-      if (isInstagram)
-        apis.push(
-          {
+      // ================================
+      // Instagram
+      // ================================
+      if (isInstagram) {
+        if (apiToggle.instagram.siputzx)
+          apis.push({
             url: createUrl(
               "siputzx",
               `/api/d/igdl?url=${encodeURIComponent(input)}`
             ),
             handler: igHandler1,
             label: "Siputzx - Instagram",
-          },
-          {
+          });
+
+        if (apiToggle.instagram.archive)
+          apis.push({
             url: createUrl(
               "archive",
               `/api/download/instagram?url=${encodeURIComponent(input)}`
             ),
             handler: igHandler2,
             label: "Archive - Instagram",
-          },
-          {
+          });
+
+        if (apiToggle.instagram.vreden)
+          apis.push({
             url: createUrl(
               "vreden",
               `/api/v1/download/instagram?url=${encodeURIComponent(input)}`
             ),
             handler: igHandler3,
             label: "Vreden - Instagram",
-          }
-        );
+          });
+      }
 
-      if (isFacebook)
-        apis.push(
-          {
+      // ================================
+      // Facebook
+      // ================================
+      if (isFacebook) {
+        if (apiToggle.facebook.siputzx)
+          apis.push({
             url: createUrl(
               "siputzx",
               `/api/d/facebook?url=${encodeURIComponent(input)}`
             ),
             handler: fbHandler1,
             label: "Siputzx - Facebook",
-          },
-          {
+          });
+
+        if (apiToggle.facebook.archive)
+          apis.push({
             url: createUrl(
               "archive",
               `/api/download/facebook?url=${encodeURIComponent(input)}`
             ),
             handler: fbHandler2,
             label: "Archive - Facebook",
-          },
-          {
+          });
+
+        if (apiToggle.facebook.vreden)
+          apis.push({
             url: createUrl(
               "vreden",
               `/api/v1/download/facebook?url=${encodeURIComponent(input)}`
             ),
             handler: fbHandler3,
             label: "Vreden - Facebook",
-          }
-        );
+          });
+      }
 
-      if (apis.length === 0) return;
+      // ================================
+      // Eksekusi API
+      // ================================
+      if (apis.length === 0) {
+        console.log("🚫 Semua API dinonaktifkan untuk platform ini.");
+        return;
+      }
 
       const controllers = apis.map(() => new AbortController());
       let finished = false;
@@ -421,12 +467,11 @@ module.exports = {
               throw new Error(`Invalid response from ${api.label}`);
 
             await api.handler(ctx, chatId, data.result || data.data);
-
             controllers.forEach((c, i) => i !== idx && c.abort());
 
             const duration = ((Date.now() - start) / 1000).toFixed(2);
             console.log(`✅ ${api.label} sukses (${duration}s)`);
-            return api.label; // pastikan return selalu ada
+            return api.label;
           } catch (err) {
             if (err.name === "CanceledError" || err.name === "AbortError")
               return;
