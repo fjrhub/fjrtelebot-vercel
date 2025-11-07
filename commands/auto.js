@@ -581,26 +581,48 @@ module.exports = {
       if (validApis.length === 0) return;
 
       let success = false;
-      for (const api of validApis) {
+
+      // Jalankan semua request API secara paralel
+      const controllers = validApis.map(() => new AbortController());
+      const requests = validApis.map((api, i) => {
+        const controller = controllers[i];
         const start = Date.now();
-        try {
-          const res = await getWithTimeout(api.url, 8000);
-          const data = res.data;
-          if (!data || !data.status) throw new Error("Invalid response");
+        return axios
+          .get(api.url, { signal: controller.signal })
+          .then((res) => {
+            const duration = ((Date.now() - start) / 1000).toFixed(2);
+            console.log(`✅ ${api.label} fetched in ${duration}s`);
+            return { api, res, duration };
+          })
+          .catch((err) => {
+            const duration = ((Date.now() - start) / 1000).toFixed(2);
+            console.warn(
+              `⚠️ ${api.label} failed after ${duration}s: ${err.message}`
+            );
+            return null; // tandai gagal
+          });
+      });
 
-          await api.handler(ctx, chatId, data.result || data.data);
-          const duration = ((Date.now() - start) / 1000).toFixed(2);
-          console.log(`✅ ${api.label} success in ${duration}s`);
-          success = true;
-          break;
-        } catch (err) {
-          console.warn(`⚠️ ${api.label} failed: ${err.message}`);
-          continue;
-        }
-      }
+      // Tunggu salah satu yang berhasil lebih dulu
+      const results = await Promise.all(requests);
 
-      if (!success) {
-        await ctx.reply("⚠️ Gagal memproses link dari semua sumber API.");
+      // Ambil API tercepat yang valid (status = true dan ada data)
+      const firstValid = results.find(
+        (r) => r && r.res?.data && (r.res.data.status || r.res.data.result)
+      );
+
+      if (firstValid) {
+        success = true;
+        // Batalkan semua request lain
+        controllers.forEach((ctrl) => ctrl.abort());
+
+        const { api, res, duration } = firstValid;
+        console.log(`🚀 Using fastest API: ${api.label} (${duration}s)`);
+
+        const data = res.data.result || res.data.data;
+        await api.handler(ctx, chatId, data);
+      } else {
+        await ctx.reply("⚠️ Semua API gagal merespons atau tidak valid.");
       }
     } catch (err) {
       console.error("❌ Fatal Error:", err);
