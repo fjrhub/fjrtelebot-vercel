@@ -471,7 +471,6 @@ module.exports = {
     try {
       const apis = [];
 
-      // Konfigurasi aktif per platform
       const enableStatus = {
         tiktok: { siputzx: true, archive: false, vreden: true },
         instagram: { siputzx: true, archive: false, vreden: false },
@@ -568,31 +567,25 @@ module.exports = {
         );
       }
 
-      // Filter hanya API aktif
       const validApis = apis.filter(Boolean);
       if (validApis.length === 0) return;
 
-      let sent = false; // 🛡️ mencegah duplikasi kirim
-
-      // Buat controller untuk tiap request (biar bisa dibatalkan)
+      let sent = false;
       const controllers = validApis.map(() => new AbortController());
 
-      // Jalankan semua request API paralel
       const requests = validApis.map((api, i) => {
         const controller = controllers[i];
         const start = Date.now();
 
         return axios
-          .get(api.url, { signal: controller.signal })
+          .get(api.url, { signal: controller.signal, timeout: 8000 }) // batasi 8 detik max
           .then((res) => {
             const duration = ((Date.now() - start) / 1000).toFixed(2);
             const data = res.data;
             console.log(`✅ ${api.label} fetched in ${duration}s`);
 
-            // Validasi format response
             if (!data || (!data.status && !data.result))
               throw new Error("Invalid API format");
-
             return { api, res: data, duration };
           })
           .catch((err) => {
@@ -604,30 +597,38 @@ module.exports = {
           });
       });
 
-      const results = await Promise.all(requests);
+      const results = await Promise.allSettled(requests);
 
-      // Ambil hasil API valid pertama
-      for (const result of results) {
-        if (!result || sent) continue;
-        const { api, res, duration } = result;
+      for (const r of results) {
+        if (!r.value || sent) continue;
+
+        const { api, res, duration } = r.value;
         const data = res.result || res.data;
 
         if (res.status || res.result) {
-          sent = true; // 🔒 kunci agar tidak kirim dua kali
-          controllers.forEach((ctrl) => ctrl.abort());
+          sent = true;
           console.log(`🚀 Using fastest API: ${api.label} (${duration}s)`);
 
+          // Batalkan semua request yang masih jalan
+          controllers.forEach((ctrl) => ctrl.abort());
+
+          // Kirim hasil dan langsung keluar
           await api.handler(ctx, chatId, data);
-          break;
+          return; // 🧠 langsung keluar agar gak lanjut ke bawah
         }
       }
 
       if (!sent) {
         await ctx.reply("⚠️ Semua API gagal merespons atau tidak valid.");
       }
+
+      return; // pastikan keluar
     } catch (err) {
       console.error("❌ Fatal Error:", err);
-      await ctx.reply("⚠️ Terjadi kesalahan saat memproses permintaan.");
+      if (!ctx.replied) {
+        await ctx.reply("⚠️ Terjadi kesalahan saat memproses permintaan.");
+      }
+      return; // keluar agar tidak looping di webhook
     }
   },
 };
