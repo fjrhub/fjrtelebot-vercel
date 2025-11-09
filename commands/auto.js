@@ -1,83 +1,49 @@
 const axios = require("axios");
 import { createUrl } from "../utils/api";
 
+// === LOCK GLOBAL UNTUK MENCEGAH DOUBEL EXECUTION ===
+const processingUsers = new Set();
+
 module.exports = {
   name: "auto",
   async execute(ctx) {
     const chatId = ctx.chat?.id;
+    const userId = ctx.from?.id;
     if (!chatId) return;
 
     const text = ctx.message?.text?.trim();
     if (!text) return;
 
-    const tiktokRegex =
-      /^(?:https?:\/\/)?(?:www\.|vm\.|vt\.)?tiktok\.com\/[^\s]+$/i;
-    const instagramRegex =
-      /^(?:https?:\/\/)?(?:www\.)?instagram\.com\/(reel|p|tv)\/[A-Za-z0-9_-]+\/?(?:\?[^ ]*)?$/i;
-    const facebookRegex =
-      /^(?:https?:\/\/)?(?:www\.|web\.)?facebook\.com\/(?:share\/(?:r|v|p)\/|reel\/|watch\?v=|permalink\.php\?story_fbid=|[^\/]+\/posts\/|video\.php\?v=)[^\s]+$/i;
+    // 🛑 Cegah dobel kirim / spam
+    if (processingUsers.has(userId)) {
+      await ctx.reply("⏳ Tunggu dulu, sedang memproses permintaan kamu sebelumnya...");
+      return;
+    }
+    processingUsers.add(userId);
 
-    const isTikTok = tiktokRegex.test(text);
-    const isInstagram = instagramRegex.test(text);
-    const isFacebook = facebookRegex.test(text);
-    if (!isTikTok && !isInstagram && !isFacebook) return;
-
-    // delete original (user) message (best-effort)
     try {
-      await ctx.api.deleteMessage(chatId, ctx.message.message_id);
-    } catch (err) {
-      // ignore if can't delete
-      console.warn("Could not delete original message:", err?.message);
-    }
+      const tiktokRegex = /^(?:https?:\/\/)?(?:www\.|vm\.|vt\.)?tiktok\.com\/[^\s]+$/i;
+      const instagramRegex = /^(?:https?:\/\/)?(?:www\.)?instagram\.com\/(reel|p|tv)\/[A-Za-z0-9_-]+\/?(?:\?[^ ]*)?$/i;
+      const facebookRegex = /^(?:https?:\/\/)?(?:www\.|web\.)?facebook\.com\/(?:share\/(?:r|v|p)\/|reel\/|watch\?v=|permalink\.php\?story_fbid=|[^\/]+\/posts\/|video\.php\?v=)[^\s]+$/i;
 
-    const input = text;
-
-    // utilitas tambahan
-    function chunkArray(arr, size) {
-      const result = [];
-      for (let i = 0; i < arr.length; i += size)
-        result.push(arr.slice(i, i + size));
-      return result;
-    }
-
-    function delay(ms) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
-    }
-
-    function toNumberFormat(num) {
-      return new Intl.NumberFormat("id-ID").format(num || 0);
-    }
-
-    async function getWithTimeout(url, timeoutMs = 8000) {
-      const start = Date.now(); // ⏱️ mulai hitung waktu
+      const isTikTok = tiktokRegex.test(text);
+      const isInstagram = instagramRegex.test(text);
+      const isFacebook = facebookRegex.test(text);
+      if (!isTikTok && !isInstagram && !isFacebook) return;
 
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        await ctx.api.deleteMessage(chatId, ctx.message.message_id);
+      } catch {}
 
-        const res = await axios.get(url, { signal: controller.signal });
-        clearTimeout(timer);
-
-        const duration = ((Date.now() - start) / 1000).toFixed(2);
-        console.log(`✅ API fetched in ${duration}s`);
+      const input = text;
+      const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+      const chunkArray = (arr, size) => {
+        const res = [];
+        for (let i = 0; i < arr.length; i += size) res.push(arr.slice(i, i + size));
         return res;
-      } catch (err) {
-        const duration = ((Date.now() - start) / 1000).toFixed(2);
-        if (err.name === "AbortError") {
-          console.warn(`⚠️ API request timed out after ${duration}s`);
-          throw new Error(`Request timeout after ${timeoutMs / 1000} seconds`);
-        }
-        console.error(`❌ API fetch failed after ${duration}s: ${err.message}`);
-        throw err;
-      }
-    }
-
-    // Fungsi bantu untuk mempersingkat angka
-    const formatNumber = (num) => {
-      if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + "M";
-      if (num >= 1_000) return (num / 1_000).toFixed(1) + "K";
-      return num.toString();
-    };
+      };
+      const toNumberFormat = (n) => new Intl.NumberFormat("id-ID").format(n || 0);
+      const formatNumber = (n) => (n >= 1_000_000 ? (n / 1_000_000).toFixed(1) + "M" : n >= 1_000 ? (n / 1_000).toFixed(1) + "K" : n.toString());
 
     // -------------------- HANDLERS --------------------
 
@@ -480,15 +446,14 @@ module.exports = {
       throw new Error("IG API 3 returned unsupported media.");
     };
 
-    try {
-      const apis = [];
-
       const enableStatus = {
         tiktok: { siputzx: true, archive: false, vreden: true },
         instagram: { siputzx: false, archive: false, vreden: true },
         facebook: { siputzx: true, archive: true, vreden: true },
       };
 
+      const apis = [];
+      
       if (isTikTok) {
         const active = enableStatus.tiktok;
         apis.push(
@@ -584,63 +549,43 @@ module.exports = {
 
       let sent = false;
       const controllers = validApis.map(() => new AbortController());
-
       const requests = validApis.map((api, i) => {
         const controller = controllers[i];
         const start = Date.now();
-
         return axios
-          .get(api.url, { signal: controller.signal, timeout: 8000 }) // batasi 8 detik max
+          .get(api.url, { signal: controller.signal, timeout: 8000 })
           .then((res) => {
             const duration = ((Date.now() - start) / 1000).toFixed(2);
-            const data = res.data;
             console.log(`✅ ${api.label} fetched in ${duration}s`);
-
-            if (!data || (!data.status && !data.result))
-              throw new Error("Invalid API format");
-            return { api, res: data, duration };
+            return { api, res: res.data, duration };
           })
           .catch((err) => {
             const duration = ((Date.now() - start) / 1000).toFixed(2);
-            console.warn(
-              `⚠️ ${api.label} failed after ${duration}s: ${err.message}`
-            );
+            console.warn(`⚠️ ${api.label} failed after ${duration}s: ${err.message}`);
             return null;
           });
       });
 
       const results = await Promise.allSettled(requests);
-
       for (const r of results) {
         if (!r.value || sent) continue;
-
         const { api, res, duration } = r.value;
         const data = res.result || res.data;
-
         if (res.status || res.result) {
           sent = true;
           console.log(`🚀 Using fastest API: ${api.label} (${duration}s)`);
-
-          // Batalkan semua request yang masih jalan
           controllers.forEach((ctrl) => ctrl.abort());
-
-          // Kirim hasil dan langsung keluar
           await api.handler(ctx, chatId, data);
-          return; // 🧠 langsung keluar agar gak lanjut ke bawah
+          return;
         }
       }
 
-      if (!sent) {
-        await ctx.reply("⚠️ Semua API gagal merespons atau tidak valid.");
-      }
-
-      return; // pastikan keluar
+      if (!sent) await ctx.reply("⚠️ Semua API gagal merespons atau tidak valid.");
     } catch (err) {
       console.error("❌ Fatal Error:", err);
-      if (!ctx.replied) {
-        await ctx.reply("⚠️ Terjadi kesalahan saat memproses permintaan.");
-      }
-      return; // keluar agar tidak looping di webhook
+      await ctx.reply("⚠️ Terjadi kesalahan saat memproses permintaan.");
+    } finally {
+      processingUsers.delete(userId);
     }
   },
 };
