@@ -420,8 +420,8 @@ module.exports = {
 
       const enableStatus = {
         tiktok: { siputzx: true, archive: true, vreden: true },
-        instagram: { siputzx: false, archive: true, vreden: false },
-        facebook: { siputzx: false, archive: false, vreden: true },
+        instagram: { siputzx: true, archive: true, vreden: true },
+        facebook: { siputzx: true, archive: true, vreden: true },
       };
 
       const apis = [];
