@@ -255,28 +255,23 @@ module.exports = {
       };
 
       const fbHandler3 = async (ctx, chatId, data) => {
-        // Prioritas HD, tapi fallback ke SD jika HD kosong
-        let videoUrl = data?.result?.download?.hd;
-        if (!videoUrl) {
-          videoUrl = data?.result?.download?.sd;
+        if (!data?.result?.download) {
+          throw new Error("Tidak ada URL video dari API 3 (Vreden).");
         }
 
-        // Jika keduanya kosong, lempar error
+        // Cek apakah HD tersedia, jika tidak, coba SD
+        let videoUrl = data.result.download.hd;
         if (!videoUrl) {
-          throw new Error(
-            "Tidak ada URL video HD atau SD dari API 3 (Vreden)."
-          );
+          videoUrl = data.result.download.sd;
+          if (!videoUrl) {
+            throw new Error(
+              "Tidak ada URL video HD atau SD dari API 3 (Vreden)."
+            );
+          }
         }
 
-        const durasion = data.result.durasi || "Durasi tidak tersedia";
-        const thumb = data.result.thumbnail;
-
-        // Kirim video dengan caption dan thumbnail (jika ada)
-        await ctx.api.sendVideo(chatId, videoUrl, {
-          caption: `Duration: ${durasion}`,
-          parse_mode: "Markdown",
-          thumbnail: thumb || undefined, // Gunakan undefined jika thumb kosong agar tidak error
-        });
+        // Kirim video tanpa caption
+        await ctx.api.sendVideo(chatId, videoUrl);
       };
 
       // Instagram handlers
