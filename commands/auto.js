@@ -256,39 +256,22 @@ module.exports = {
 
       const fbHandler3 = async (ctx, chatId, data) => {
         try {
-          console.log("=== DEBUG fbHandler3 ===");
-          console.log("Data mentah dari API:", JSON.stringify(data, null, 2));
-
-          // Validasi struktur dasar
           if (!data || !data.download) {
-            console.error("❌ Struktur data tidak sesuai!");
-            throw new Error("Data API tidak sesuai format yang diharapkan.");
+            throw new Error("Invalid API data structure.");
           }
 
           const videoUrl = data.download.hd || data.download.sd;
           const thumb = data.thumbnail || null;
 
-          console.log("HD URL:", data.download.hd);
-          console.log("SD URL:", data.download.sd);
-          console.log("Thumbnail:", thumb);
-
           if (!videoUrl) {
-            console.error("❌ Tidak ada URL video HD maupun SD.");
-            throw new Error(
-              "Tidak ada URL video yang valid dari API 3 (Vreden)."
-            );
+            throw new Error("No valid video URL found from API 3 (Vreden).");
           }
 
-          // Kirim video tanpa caption
           await ctx.api.sendVideo(chatId, videoUrl, {
             ...(thumb ? { thumbnail: thumb } : {}),
           });
-
-          console.log("✅ Video berhasil dikirim:", videoUrl);
         } catch (error) {
-          console.error("⚠️ Terjadi error saat mengirim video:");
-          console.error(error);
-          await ctx.reply(`Gagal mengirim video: ${error.message}`);
+          await ctx.reply(`Failed to send video: ${error.message}`);
         }
       };
 
