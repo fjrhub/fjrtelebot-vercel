@@ -375,34 +375,18 @@ module.exports = {
           console.log("📥 [IG Handler 3] Full API Response:");
           console.log(JSON.stringify(data, null, 2));
 
-          // Validasi struktur utama
-          if (!data?.result || !Array.isArray(data.result.data)) {
+          // 🔎 Deteksi struktur otomatis (versi lama & baru)
+          const root = data.result ? data.result : data;
+
+          if (!root?.data || !Array.isArray(root.data)) {
             console.error(
-              "❌ [IG Handler 3] Invalid response: 'result.data' not found or not array."
+              "❌ [IG Handler 3] Invalid response: 'data' not found or not array."
             );
             throw new Error("Invalid Instagram API structure.");
           }
 
-          const profile = data.result.profile || {};
-          const captionData = data.result.caption || {};
-          const stats = data.result.statistics || {};
-          const mediaList = data.result.data;
-
-          console.log(`🧩 Media ditemukan: ${mediaList.length}`);
-
-          // Caption dengan statistik
-          const caption =
-            `👤 ${profile.full_name || profile.username || "Unknown"}\n` +
-            (captionData.text ? `📝 ${captionData.text}\n\n` : "") +
-            `📊 Statistik:\n` +
-            `❤️ Like: ${stats.like_count ?? "-"} | 💬 Comment: ${
-              stats.comment_count ?? "-"
-            }\n` +
-            `▶️ Views: ${stats.play_count ?? "-"} | 🔁 Share: ${
-              stats.share_count ?? "-"
-            }`;
-
-          console.log("🪶 Caption:", caption);
+          const mediaList = root.data;
+          console.log(`🧩 Jumlah media ditemukan: ${mediaList.length}`);
 
           const videos = mediaList.filter((m) => m.type === "video" && m.url);
           const images = mediaList.filter((m) => m.type === "image" && m.url);
@@ -411,31 +395,29 @@ module.exports = {
             `🎥 Video: ${videos.length} | 🖼️ Gambar: ${images.length}`
           );
 
+          // Kirim video jika ada
           if (videos.length > 0) {
-            console.log("🚀 Mengirim video pertama...");
+            console.log("🚀 Mengirim video pertama tanpa caption...");
             await ctx.api.sendVideo(chatId, videos[0].url, {
-              caption,
               supports_streaming: true,
             });
             console.log("✅ Video berhasil dikirim.");
             return;
           }
 
+          // Kirim semua gambar jika tidak ada video
           if (images.length > 0) {
-            console.log("🚀 Mengirim semua gambar...");
+            console.log("🚀 Mengirim semua gambar tanpa caption...");
             const groups = chunkArray(
               images.map((img) => img.url),
               10
             );
-            let first = true;
             for (const group of groups) {
-              const mediaGroup = group.map((url, idx) => ({
+              const mediaGroup = group.map((url) => ({
                 type: "photo",
                 media: url,
-                caption: first && idx === 0 ? caption : undefined,
               }));
               await ctx.api.sendMediaGroup(chatId, mediaGroup);
-              first = false;
               await delay(1500);
             }
             console.log("✅ Semua gambar berhasil dikirim.");
@@ -445,8 +427,8 @@ module.exports = {
           console.warn("⚠️ Tidak ditemukan media video maupun gambar.");
           await ctx.reply("⚠️ Tidak ditemukan media pada postingan ini.");
         } catch (err) {
-          console.error("❌ [IG Handler 3] Error:", err);
-          await ctx.reply("⚠️ Gagal memproses media Instagram (Handler 3).");
+          console.error("❌ [IG Handler 3] Error:", err.message);
+          await ctx.reply("Terjadi kesalahan saat memproses media Instagram.");
         }
       };
 
