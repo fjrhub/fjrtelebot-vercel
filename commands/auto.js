@@ -339,79 +339,66 @@ module.exports = {
           comments
         )}`;
 
-        try {
-          // 🔹 Jika formatnya video
-          if (isVideo) {
-            await ctx.api.sendVideo(chatId, mediaUrls[0], {
-              caption,
-              parse_mode: "Markdown",
-              supports_streaming: true,
-            });
-            return;
-          }
-
-          const groups = chunkArray(mediaUrls, 10); // kirim per 10 agar tidak timeout
-          for (const grp of groups) {
-            const mediaGroup = grp.map((url, idx) => ({
-              type: "photo",
-              media: url,
-              ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
-            }));
-
-            await ctx.api.sendMediaGroup(chatId, mediaGroup);
-            if (groups.length > 1) await delay(1500); // delay antar batch
-          }
-
-        } catch (err) {
-          console.error("❌ IG Handler 2 send error:", err.message);
-          throw err;
+        // 🔹 Jika formatnya video
+        if (isVideo) {
+          await ctx.api.sendVideo(chatId, mediaUrls[0], {
+            caption,
+            parse_mode: "Markdown",
+            supports_streaming: true,
+          });
+          return;
         }
+
+        const groups = chunkArray(mediaUrls, 10); // kirim per 10 agar tidak timeout
+        for (const grp of groups) {
+          const mediaGroup = grp.map((url, idx) => ({
+            type: "photo",
+            media: url,
+            ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
+          }));
+
+          await ctx.api.sendMediaGroup(chatId, mediaGroup);
+          if (groups.length > 1) await delay(1500); // delay antar batch
+        }
+        throw new Error("API 2 returned no valid downloadable content.");
       };
 
       const igHandler3 = async (ctx, chatId, data) => {
-        try {
-          const root = data.result ? data.result : data;
+        const root = data.result ? data.result : data;
 
-          if (!root?.data || !Array.isArray(root.data)) {
-            throw new Error("Invalid Instagram API structure.");
-          }
-
-          const mediaList = root.data;
-          const videos = mediaList.filter((m) => m.type === "video" && m.url);
-          const images = mediaList.filter((m) => m.type === "image" && m.url);
-
-          // Kirim video jika ada
-          if (videos.length > 0) {
-            await ctx.api.sendVideo(chatId, videos[0].url, {
-              supports_streaming: true,
-            });
-            return;
-          }
-
-          // Kirim semua gambar jika tidak ada video
-          if (images.length > 0) {
-            const groups = chunkArray(
-              images.map((img) => img.url),
-              10
-            );
-            for (const group of groups) {
-              const mediaGroup = group.map((url) => ({
-                type: "photo",
-                media: url,
-              }));
-              await ctx.api.sendMediaGroup(chatId, mediaGroup);
-              await delay(1500);
-            }
-            return;
-          }
-
-          await ctx.reply("⚠️ Tidak ditemukan media pada postingan ini.");
-        } catch (err) {
-          await ctx.reply(
-            "⚠️ Terjadi kesalahan saat memproses media Instagram."
-          );
-          throw err; // supaya fallback tetap jalan
+        if (!root?.data || !Array.isArray(root.data)) {
+          throw new Error("Invalid Instagram API structure.");
         }
+
+        const mediaList = root.data;
+        const videos = mediaList.filter((m) => m.type === "video" && m.url);
+        const images = mediaList.filter((m) => m.type === "image" && m.url);
+
+        // Kirim video jika ada
+        if (videos.length > 0) {
+          await ctx.api.sendVideo(chatId, videos[0].url, {
+            supports_streaming: true,
+          });
+          return;
+        }
+
+        // Kirim semua gambar jika tidak ada video
+        if (images.length > 0) {
+          const groups = chunkArray(
+            images.map((img) => img.url),
+            10
+          );
+          for (const group of groups) {
+            const mediaGroup = group.map((url) => ({
+              type: "photo",
+              media: url,
+            }));
+            await ctx.api.sendMediaGroup(chatId, mediaGroup);
+            await delay(1500);
+          }
+          return;
+        }
+        throw new Error("API 3 returned no valid downloadable content.");
       };
 
       const enableStatus = {
