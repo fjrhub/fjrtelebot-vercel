@@ -418,7 +418,7 @@ module.exports = {
       const enableStatus = {
         tiktok: { siputzx: true, archive: true, vreden: true },
         instagram: { siputzx: true, archive: true, vreden: true },
-        facebook: { siputzx: true, archive: false, vreden: true },
+        facebook: { siputzx: true, archive: true, vreden: true },
       };
 
       const apis = [];
