@@ -40,7 +40,6 @@ module.exports = {
         await ctx.api.deleteMessage(chatId, ctx.message.message_id);
       } catch {}
 
-      const input = text;
       const delay = (ms) => new Promise((r) => setTimeout(r, ms));
       const chunkArray = (arr, size) => {
         const res = [];
@@ -48,6 +47,7 @@ module.exports = {
           res.push(arr.slice(i, i + size));
         return res;
       };
+
       const toNumberFormat = (n) =>
         new Intl.NumberFormat("id-ID").format(n || 0);
       const formatNumber = (n) =>
