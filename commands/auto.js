@@ -11,10 +11,10 @@ module.exports = {
     const userId = ctx.from?.id;
     if (!chatId) return;
 
-    const text = ctx.message?.text?.trim();
-    if (!text) return;
+    const input = ctx.message?.text?.trim();
+    if (!input) return;
 
-    // 🛑 Cegah dobel kirim / spam
+    // === LOCK: CEGAH DOUBEL EXECUTION ===
     if (processingUsers.has(userId)) {
       await ctx.reply(
         "⏳ Tunggu dulu, sedang memproses permintaan kamu sebelumnya..."
@@ -31,9 +31,9 @@ module.exports = {
       const facebookRegex =
         /^(?:https?:\/\/)?(?:www\.|web\.)?facebook\.com\/(?:share\/(?:r|v|p)\/|reel\/|watch\?v=|permalink\.php\?story_fbid=|[^\/]+\/posts\/|video\.php\?v=)[^\s]+$/i;
 
-      const isTikTok = tiktokRegex.test(text);
-      const isInstagram = instagramRegex.test(text);
-      const isFacebook = facebookRegex.test(text);
+      const isTikTok = tiktokRegex.test(input);
+      const isInstagram = instagramRegex.test(input);
+      const isFacebook = facebookRegex.test(input);
       if (!isTikTok && !isInstagram && !isFacebook) return;
 
       try {
@@ -422,7 +422,6 @@ module.exports = {
       };
 
       const apis = [];
-
       if (isTikTok) {
         const active = enableStatus.tiktok;
         apis.push(
@@ -516,43 +515,47 @@ module.exports = {
       const validApis = apis.filter(Boolean);
       if (validApis.length === 0) return;
 
+      // === PARALLEL REQUEST + HANDLER SEKALIGUS ===
       let sent = false;
       const controllers = validApis.map(() => new AbortController());
-      const requests = validApis.map((api, i) => {
-        const controller = controllers[i];
-        const start = Date.now();
-        return axios
-          .get(api.url, { signal: controller.signal, timeout: 8000 })
-          .then((res) => {
+
+      await Promise.all(
+        validApis.map(async (api, i) => {
+          if (sent) return; // kalau sudah ada yang sukses, lewati
+
+          const controller = controllers[i];
+          const start = Date.now();
+
+          try {
+            const res = await axios.get(api.url, {
+              signal: controller.signal,
+              timeout: 8000,
+            });
             const duration = ((Date.now() - start) / 1000).toFixed(2);
             console.log(`✅ ${api.label} fetched in ${duration}s`);
-            return { api, res: res.data, duration };
-          })
-          .catch((err) => {
+
+            const data =
+              res.result || res.data?.result || res.data?.data || res.data;
+            if (!data) throw new Error("Data kosong");
+
+            if (!sent) {
+              sent = true;
+              controllers.forEach((c) => c.abort()); // hentikan API lain
+              console.log(`🚀 Menggunakan: ${api.label} (${duration}s)`);
+              await api.handler(ctx, chatId, data);
+            }
+          } catch (err) {
             const duration = ((Date.now() - start) / 1000).toFixed(2);
             console.warn(
-              `⚠️ ${api.label} failed after ${duration}s: ${err.message}`
+              `⚠️ ${api.label} gagal setelah ${duration}s: ${err.message}`
             );
-            return null;
-          });
-      });
+          }
+        })
+      );
 
-      const results = await Promise.allSettled(requests);
-      for (const r of results) {
-        if (!r.value || sent) continue;
-        const { api, res, duration } = r.value;
-        const data = res.result || res.data;
-        if (res.status || res.result) {
-          sent = true;
-          console.log(`🚀 Using fastest API: ${api.label} (${duration}s)`);
-          controllers.forEach((ctrl) => ctrl.abort());
-          await api.handler(ctx, chatId, data);
-          return;
-        }
-      }
-
-      if (!sent)
+      if (!sent) {
         await ctx.reply("⚠️ Semua API gagal merespons atau tidak valid.");
+      }
     } catch (err) {
       console.error("❌ Fatal Error:", err);
       await ctx.reply("⚠️ Terjadi kesalahan saat memproses permintaan.");
