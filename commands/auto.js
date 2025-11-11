@@ -519,10 +519,9 @@ module.exports = {
       let sent = false;
       const controllers = validApis.map(() => new AbortController());
 
-      await Promise.all(
+      // Simpan hasil tiap API agar bisa diproses setelah semua selesai
+      const results = await Promise.allSettled(
         validApis.map(async (api, i) => {
-          if (sent) return; // kalau sudah ada yang sukses, lewati
-
           const controller = controllers[i];
           const start = Date.now();
 
@@ -532,27 +531,44 @@ module.exports = {
               timeout: 8000,
             });
             const duration = ((Date.now() - start) / 1000).toFixed(2);
+
             console.log(`✅ ${api.label} fetched in ${duration}s`);
-
-            const data =
-              res.result || res.data?.result || res.data?.data || res.data;
-            if (!data) throw new Error("Data kosong");
-
-            if (!sent) {
-              sent = true;
-              controllers.forEach((c) => c.abort()); // hentikan API lain
-              console.log(`🚀 Menggunakan: ${api.label} (${duration}s)`);
-              await api.handler(ctx, chatId, data);
-            }
+            return { api, res, duration };
           } catch (err) {
             const duration = ((Date.now() - start) / 1000).toFixed(2);
             console.warn(
               `⚠️ ${api.label} gagal setelah ${duration}s: ${err.message}`
             );
+            return null;
           }
         })
       );
 
+      // Proses hasil yang pertama sukses
+      for (const r of results) {
+        if (!r?.value || sent) continue;
+
+        const { api, res, duration } = r.value;
+        const data =
+          res.result || res.data?.result || res.data?.data || res.data;
+        if (!data) continue;
+
+        // Tandai sebagai sukses dan hentikan API lain
+        sent = true;
+        console.log(`🚀 Menggunakan: ${api.label} (${duration}s)`);
+        controllers.forEach((ctrl) => ctrl.abort());
+
+        try {
+          await api.handler(ctx, chatId, data);
+          console.log(`📤 Sukses dikirim menggunakan ${api.label}`);
+        } catch (err) {
+          console.error(`❌ Handler ${api.label} error: ${err.message}`);
+        }
+
+        break;
+      }
+
+      // Jika semua API gagal
       if (!sent) {
         await ctx.reply("⚠️ Semua API gagal merespons atau tidak valid.");
       }
