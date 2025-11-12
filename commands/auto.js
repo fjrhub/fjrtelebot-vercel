@@ -517,6 +517,10 @@ module.exports = {
               signal: controller.signal,
               timeout: 8000,
             });
+
+            // kalau sudah ada API lain yang sukses, langsung hentikan eksekusi
+            if (sent) return;
+
             const duration = ((Date.now() - start) / 1000).toFixed(2);
             console.log(`✅ ${api.label} fetched in ${duration}s`);
 
@@ -531,6 +535,9 @@ module.exports = {
               await api.handler(ctx, chatId, data);
             }
           } catch (err) {
+            // stop log error kalau sudah ada yang sukses
+            if (sent) return;
+
             const duration = ((Date.now() - start) / 1000).toFixed(2);
             console.warn(
               `⚠️ ${api.label} gagal setelah ${duration}s: ${err.message}`
