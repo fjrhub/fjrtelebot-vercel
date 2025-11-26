@@ -1,6 +1,5 @@
 {
+  "version": 2,
   "installCommand": "pnpm install --shamefully-hoist",
-  "buildCommand": "pnpm run vercel-build",
-  "outputDirectory": ".",
-  "ignoreCommand": "echo 'no ignore'"
+  "buildCommand": "echo 'Skipping build step'"
 }
