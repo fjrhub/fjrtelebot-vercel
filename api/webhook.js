@@ -3,10 +3,10 @@ import dotenv from "dotenv";
 
 dotenv.config({ path: ".env.local" });
 
-// Default mode: webhook
-const MODE = process.env.TELEGRAM_MODE || "webhook";
-
-// Ambil token dari env
+// ==========================
+// Konfigurasi mode dan token
+// ==========================
+const MODE = process.env.TELEGRAM_MODE || "webhook"; // default webhook
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
 if (!BOT_TOKEN) {
@@ -18,12 +18,14 @@ if (!BOT_TOKEN) {
 // ==========================
 const bot = new Bot(BOT_TOKEN);
 
+// ==========================
 // Handler contoh
+// ==========================
 bot.command("start", (ctx) => ctx.reply("Bot aktif!"));
 bot.on("message", (ctx) => ctx.reply("Pesan diterima ✔️"));
 
 // ==========================
-// Log update masuk (debug)
+// Debug log untuk setiap update
 // ==========================
 bot.on("message", (ctx) => console.log("Received message:", ctx.message));
 
