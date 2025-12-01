@@ -1,0 +1,5 @@
+{
+  "version": 2,
+  "installCommand": "pnpm install --shamefully-hoist",
+  "buildCommand": "echo 'Skipping build step'"
+}
