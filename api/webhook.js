@@ -1,21 +1,33 @@
 import { Bot } from "grammy";
 
-// ENV
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const SECRET_HEADER = process.env.TELEGRAM_SECRET || "";
+const SECRET_HEADER = process.env.TELEGRAM_SECRET;
 
 if (!BOT_TOKEN) throw new Error("BOT_TOKEN missing");
 if (!SECRET_HEADER) throw new Error("TELEGRAM_SECRET missing");
 
-// BOT SINGLETON
-const bot = global._botInstance ?? new Bot(BOT_TOKEN);
-global._botInstance = bot;
+let bot = global._telegramBot;
+let botReady = global._telegramBotReady;
 
-// Handlers
-bot.command("start", (ctx) => ctx.reply("Bot aktif via webhook!"));
-bot.on("message", (ctx) => ctx.reply("Pesan diterima ✔️"));
+if (!bot) {
+  bot = new Bot(BOT_TOKEN);
 
-// FIX: baca body manual (Vercel requires this)
+  // Handler
+  bot.command("start", (ctx) => ctx.reply("Bot aktif via webhook!"));
+  bot.on("message", (ctx) => ctx.reply("Pesan diterima ✔️"));
+
+  global._telegramBot = bot;
+}
+
+// Lazy init (dipanggil hanya sekali)
+async function ensureBotInit() {
+  if (!botReady) {
+    await bot.init();
+    global._telegramBotReady = true;
+  }
+}
+
+// FIX: Body parser manual (wajib untuk Vercel)
 async function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = "";
@@ -23,8 +35,8 @@ async function readBody(req) {
     req.on("end", () => {
       try {
         resolve(JSON.parse(data || "{}"));
-      } catch (err) {
-        reject(err);
+      } catch (e) {
+        reject(e);
       }
     });
   });
@@ -32,7 +44,7 @@ async function readBody(req) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(200).send("Webhook OK");
+    return res.status(200).send("OK");
   }
 
   // Secret check
@@ -42,11 +54,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Wajib init sebelum handleUpdate
-    if (!bot.botInfo) await bot.init();
+    // Pastikan init SEBELUM update
+    await ensureBotInit();
 
-    const update = await readBody(req); // FIX BODY
-
+    const update = await readBody(req);
     await bot.handleUpdate(update);
 
     return res.status(200).json({ ok: true });
