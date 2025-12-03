@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { checkAnswer } from "./utils/games.js";
+// import { checkAnswer } from "./utils/games.js";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -64,7 +64,7 @@ export async function handleMessage(ctx) {
   }
 
   // Game engine
-  await checkAnswer(ctx);
+  // await checkAnswer(ctx);
 }
 
 // 🔨 Handle command
