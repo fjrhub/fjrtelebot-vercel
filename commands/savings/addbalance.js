@@ -1,8 +1,8 @@
 import { google } from "googleapis";
 
-/* ======================
-   CONFIG OPTIONS
-====================== */
+/* =========================
+   PILIHAN (BISA DITAMBAH)
+========================= */
 const OPTIONS = {
   jenis: ["Pemasukan", "Pengeluaran"],
   kategori: ["Makan", "Transport", "Gaji", "Investasi"],
@@ -12,9 +12,9 @@ const OPTIONS = {
   status: ["Selesai", "Pending"],
 };
 
-/* ======================
-   Utils
-====================== */
+/* =========================
+   UTIL
+========================= */
 function toNumber(val) {
   return Number(String(val).replace(/\./g, "").replace(",", "."));
 }
@@ -29,14 +29,14 @@ function keyboard(list, prefix) {
   };
 }
 
-/* ======================
-   State
-====================== */
-const stateMap = new Map();
+/* =========================
+   STATE
+========================= */
+const states = new Map();
 
-/* ======================
-   Google Sheets
-====================== */
+/* =========================
+   GOOGLE SHEETS CLIENT
+========================= */
 function sheetsClient() {
   const auth = new google.auth.GoogleAuth({
     credentials: {
@@ -51,9 +51,48 @@ function sheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-async function save(data) {
+/* =========================
+   AMBIL SALDO TERAKHIR (K)
+========================= */
+async function getLastSaldo(akun) {
+  const sheets = sheetsClient();
+
+  // Ambil SEMUA data baris (A–O)
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: "Sheet1!A2:O",
+  });
+
+  const rows = res.data.values || [];
+  if (!rows.length) return 0;
+
+  // Cari dari bawah (transaksi terakhir)
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const akunRow = rows[i][6];       // G = Akun
+    const saldoAfter = rows[i][10];   // K = Saldo Setelah
+
+    if (akunRow === akun) {
+      return Number(saldoAfter) || 0;
+    }
+  }
+
+  // Belum pernah ada transaksi akun ini
+  return 0;
+}
+
+/* =========================
+   SIMPAN TRANSAKSI
+========================= */
+async function saveTransaction(data) {
   const sheets = sheetsClient();
   const now = new Date().toISOString();
+
+  const saldoSebelum = await getLastSaldo(data.akun);
+
+  const saldoSesudah =
+    data.jenis === "Pemasukan"
+      ? saldoSebelum + data.jumlah
+      : saldoSebelum - data.jumlah;
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: process.env.SPREADSHEET_ID,
@@ -61,34 +100,34 @@ async function save(data) {
     valueInputOption: "USER_ENTERED",
     requestBody: {
       values: [[
-        data.jenis,
-        data.kategori,
-        data.subKategori,
-        data.deskripsi,
-        data.jumlah,
-        data.mataUang,
-        data.akun,
-        data.metode,
-        data.status,
-        data.saldoSebelum,
-        data.saldoSesudah,
-        data.tag,
-        data.catatan,
-        now,
-        now
+        data.jenis,          // A
+        data.kategori,       // B
+        data.subKategori,    // C
+        data.deskripsi,      // D
+        data.jumlah,         // E
+        data.mataUang,       // F
+        data.akun,           // G
+        data.metode,         // H
+        data.status,         // I
+        saldoSebelum,        // J
+        saldoSesudah,        // K
+        data.tag,            // L
+        data.catatan,        // M
+        now,                 // N
+        now,                 // O
       ]]
     }
   });
 }
 
-/* ======================
-   Command
-====================== */
+/* =========================
+   COMMAND
+========================= */
 export default {
   name: "addbalance",
 
   async execute(ctx) {
-    stateMap.set(ctx.from.id, { step: "jenis" });
+    states.set(ctx.from.id, { step: "jenis" });
 
     await ctx.reply("Pilih jenis transaksi:", {
       reply_markup: keyboard(OPTIONS.jenis, "addbalance:jenis"),
@@ -96,28 +135,22 @@ export default {
   },
 
   async handleCallback(ctx) {
-    const state = stateMap.get(ctx.from.id);
+    const state = states.get(ctx.from.id);
     if (!state) return;
 
     const [, step, value] = ctx.callbackQuery.data.split(":");
 
     if (step === "cancel") {
-      stateMap.delete(ctx.from.id);
+      states.delete(ctx.from.id);
       return ctx.editMessageText("❌ Proses dibatalkan.");
     }
 
-    if (value !== "manual") {
-      state[step] = value;
+    if (value === "manual") {
+      state.step = step;
+      return ctx.editMessageText(`Masukkan ${step} secara manual:`);
     }
 
-    const next = {
-      jenis: "kategori",
-      kategori: "subKategori",
-      subKategori: "deskripsi",
-      akun: "metode",
-      metode: "status",
-      status: "saldoSebelum",
-    };
+    state[step] = value;
 
     if (step === "jenis") {
       state.step = "kategori";
@@ -153,59 +186,47 @@ export default {
     }
 
     if (step === "status") {
-      state.step = "saldoSebelum";
-      return ctx.editMessageText("Masukkan saldo sebelum:");
-    }
-
-    if (value === "manual") {
-      state.step = step;
-      return ctx.editMessageText(`Masukkan ${step} secara manual:`);
+      state.step = "tag";
+      return ctx.editMessageText("Masukkan tag:");
     }
   },
 
   async handleText(ctx) {
-    const state = stateMap.get(ctx.from.id);
+    const state = states.get(ctx.from.id);
     if (!state) return;
 
-    const t = ctx.message.text;
+    const text = ctx.message.text;
 
     switch (state.step) {
       case "deskripsi":
-        state.deskripsi = t;
+        state.deskripsi = text;
         state.step = "jumlah";
         return ctx.reply("Masukkan jumlah (contoh: 10.000)");
 
       case "jumlah":
-        state.jumlah = toNumber(t);
+        state.jumlah = toNumber(text);
         state.step = "mataUang";
         return ctx.reply("Masukkan mata uang (IDR / USD / USDT)");
 
       case "mataUang":
-        state.mataUang = t.toUpperCase();
+        state.mataUang = text.toUpperCase();
         state.step = "akun";
         return ctx.reply("Pilih akun:", {
           reply_markup: keyboard(OPTIONS.akun, "addbalance:akun"),
         });
 
-      case "saldoSebelum":
-        state.saldoSebelum = toNumber(t);
-        state.step = "saldoSesudah";
-        return ctx.reply("Masukkan saldo sesudah");
-
-      case "saldoSesudah":
-        state.saldoSesudah = toNumber(t);
-        state.step = "tag";
-        return ctx.reply("Masukkan tag");
-
       case "tag":
-        state.tag = t;
+        state.tag = text;
         state.step = "catatan";
-        return ctx.reply("Masukkan catatan");
+        return ctx.reply("Masukkan catatan:");
 
       case "catatan":
-        state.catatan = t;
-        await save(state);
-        stateMap.delete(ctx.from.id);
+        state.catatan = text;
+        state.status ??= "Selesai";
+
+        await saveTransaction(state);
+        states.delete(ctx.from.id);
+
         return ctx.reply("✅ Transaksi berhasil disimpan");
     }
   }
