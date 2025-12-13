@@ -53,10 +53,8 @@ SATUAN : ${satuanValue.toFixed(3)}
 }
 
 export default {
-  name: "balance",
+  name: "pricelist",
   async execute(ctx) {
-    await ctx.reply("⏳ Mengambil data dari Google Sheets...");
-
     const data = await formatSheetData();
 
     // pastikan tidak melebihi limit Telegram 4096 char
