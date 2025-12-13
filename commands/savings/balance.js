@@ -24,7 +24,7 @@ async function formatSheetData() {
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: "Sheet1!A2:H999",
+      range: "Sheet5!A2:H999",
     });
 
     const rows = res.data.values;
