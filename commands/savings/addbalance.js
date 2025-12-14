@@ -6,9 +6,9 @@ import { google } from "googleapis";
 const OPTIONS = {
   jenis: ["Pemasukan", "Pengeluaran"],
   kategori: ["Makanan", "Transportasi", "Hiburan", "Utilitas", "Investasi", "Gaji"],
-  subKategori: ["Makan Harian", "Jajan", "Kopi", "Bensin", "Game", "Internet", "Crypto", "Emas Digital"],
-  akun: ["Cash", "Bank", "E-Wallet", "Crypto", "Dana", "Seabank"],
-  metode: ["Tunai", "Transfer", "QRIS"],
+  subKategori: ["Makan Harian", "Jajan", "Kopi", "Bensin", "Internet", "Crypto"],
+  akun: ["Wallet", "Bank", "Fjlsaldo", "Binance", "Dana", "Seabank"],
+  metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
 };
 
 /* =========================
