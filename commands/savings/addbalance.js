@@ -59,7 +59,7 @@ async function getLastSaldo(akun) {
   // Ambil SEMUA data baris (A–O)
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!A2:O",
+    range: "Sheet1!A2:N",
   });
 
   const rows = res.data.values || [];
@@ -68,7 +68,7 @@ async function getLastSaldo(akun) {
   // Cari dari bawah (transaksi terakhir)
   for (let i = rows.length - 1; i >= 0; i--) {
     const akunRow = rows[i][6];       // G = Akun
-    const saldoAfter = rows[i][10];   // K = Saldo Setelah
+    const saldoAfter = rows[i][9];   // J = Saldo Setelah
 
     if (akunRow === akun) {
       return Number(saldoAfter) || 0;
@@ -178,7 +178,7 @@ export default {
 
     if (step === "metode") {
       state.step = "tag";
-      return ctx.editMessageText("Masukkan tag:");
+      return ctx.editMessageText("Label fleksibel untuk filter cepat & analisis tambahan\nMasukkan tag:");
     }
   },
 
