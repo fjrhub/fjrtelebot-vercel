@@ -209,7 +209,7 @@ export default {
       case "tag":
         state.tag = text;
         state.step = "catatan";
-        return ctx.reply("Masukkan catatan:");
+        return ctx.reply("Info tambahan yang tidak perlu sering dipakai\nMasukkan catatan:");
 
       case "catatan":
         state.catatan = text;
