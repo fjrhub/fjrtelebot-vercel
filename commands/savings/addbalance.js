@@ -9,7 +9,6 @@ const OPTIONS = {
   subKategori: ["Harian", "Bulanan", "Tambahan"],
   akun: ["Cash", "Bank", "E-Wallet", "Crypto"],
   metode: ["Tunai", "Transfer", "QRIS"],
-  status: ["Selesai", "Pending"],
 };
 
 /* =========================
@@ -107,14 +106,13 @@ async function saveTransaction(data) {
         data.jumlah,         // E
         data.mataUang,       // F
         data.akun,           // G
-        data.metode,         // H
-        data.status,         // I
-        saldoSebelum,        // J
-        saldoSesudah,        // K
-        data.tag,            // L
-        data.catatan,        // M
+        data.status,         // H
+        saldoSebelum,        // I
+        saldoSesudah,        // J
+        data.tag,            // K
+        data.catatan,        // L
+        now,                 // M
         now,                 // N
-        now,                 // O
       ]]
     }
   });
@@ -179,13 +177,6 @@ export default {
     }
 
     if (step === "metode") {
-      state.step = "status";
-      return ctx.editMessageText("Pilih status:", {
-        reply_markup: keyboard(OPTIONS.status, "addbalance:status"),
-      });
-    }
-
-    if (step === "status") {
       state.step = "tag";
       return ctx.editMessageText("Masukkan tag:");
     }
