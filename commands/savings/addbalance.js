@@ -59,12 +59,6 @@ function keyboard(list, prefix) {
   return {
     inline_keyboard: [
       ...list.map((v) => [{ text: v, callback_data: `${prefix}:${v}` }]),
-      [
-        {
-          text: "➕ Lainnya (ketik manual)",
-          callback_data: `${prefix}:manual`,
-        },
-      ],
       [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
     ],
   };
