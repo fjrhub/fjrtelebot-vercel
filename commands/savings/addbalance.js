@@ -5,9 +5,43 @@ import { google } from "googleapis";
 ========================= */
 const OPTIONS = {
   jenis: ["Pemasukan", "Pengeluaran"],
-  kategori: ["Makanan", "Transportasi", "Hiburan", "Utilitas", "Investasi", "Gaji"],
-  subKategori: ["Makan Harian", "Jajan", "Kopi", "Bensin", "Internet", "Crypto"],
-  akun: ["Wallet", "Bank", "Fjlsaldo", "Binance", "Dana", "Seabank"],
+
+  kategori: {
+    Pengeluaran: [
+      "Makanan",
+      "Transportasi",
+      "Hiburan",
+      "Utilitas",
+      "Pendidikan",
+      "Kesehatan",
+      "Lainnya",
+    ],
+    Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
+  },
+
+  subKategori: {
+    Pengeluaran: {
+      Makanan: ["Makan Harian", "Jajan", "Kopi"],
+      Transportasi: ["Bensin", "Ojol", "Parkir"],
+      Hiburan: ["Game", "Streaming"],
+      Utilitas: ["Internet", "Listrik", "Pulsa"],
+      Pendidikan: ["Kursus", "Buku"],
+      Kesehatan: ["Obat", "Dokter"],
+      Lainnya: ["Lain-lain"],
+    },
+
+    Pemasukan: {
+      Gaji: ["Gaji Bulanan", "Bonus", "THR"],
+      Usaha: ["Penjualan", "Jasa", "Komisi"],
+      Investasi: ["Crypto", "Saham", "Dividen"],
+      Hadiah: ["Hadiah", "Donasi"],
+      Refund: ["Refund Belanja", "Cashback"],
+      Lainnya: ["Lain-lain"],
+    },
+  },
+
+  akun: ["Cash", "Dana", "Seabank", "Bank", "Binance", "Wallet"],
+
   metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
 };
 
@@ -21,8 +55,13 @@ function toNumber(val) {
 function keyboard(list, prefix) {
   return {
     inline_keyboard: [
-      ...list.map(v => [{ text: v, callback_data: `${prefix}:${v}` }]),
-      [{ text: "➕ Lainnya (ketik manual)", callback_data: `${prefix}:manual` }],
+      ...list.map((v) => [{ text: v, callback_data: `${prefix}:${v}` }]),
+      [
+        {
+          text: "➕ Lainnya (ketik manual)",
+          callback_data: `${prefix}:manual`,
+        },
+      ],
       [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
     ],
   };
@@ -67,8 +106,8 @@ async function getLastSaldo(akun) {
 
   // Cari dari bawah (transaksi terakhir)
   for (let i = rows.length - 1; i >= 0; i--) {
-    const akunRow = rows[i][6];       // G = Akun
-    const saldoAfter = rows[i][9];   // J = Saldo Setelah
+    const akunRow = rows[i][6]; // G = Akun
+    const saldoAfter = rows[i][9]; // J = Saldo Setelah
 
     if (akunRow === akun) {
       return Number(saldoAfter) || 0;
@@ -98,23 +137,25 @@ async function saveTransaction(data) {
     range: "Sheet1!A:O",
     valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [[
-        data.jenis,          // A
-        data.kategori,       // B
-        data.subKategori,    // C
-        data.deskripsi,      // D
-        data.jumlah,         // E
-        data.mataUang,       // F
-        data.akun,           // G
-        data.status,         // H
-        saldoSebelum,        // I
-        saldoSesudah,        // J
-        data.tag,            // K
-        data.catatan,        // L
-        now,                 // M
-        now,                 // N
-      ]]
-    }
+      values: [
+        [
+          data.jenis, // A
+          data.kategori, // B
+          data.subKategori, // C
+          data.deskripsi, // D
+          data.jumlah, // E
+          data.mataUang, // F
+          data.akun, // G
+          data.status, // H
+          saldoSebelum, // I
+          saldoSesudah, // J
+          data.tag, // K
+          data.catatan, // L
+          now, // M
+          now, // N
+        ],
+      ],
+    },
   });
 }
 
@@ -152,15 +193,23 @@ export default {
 
     if (step === "jenis") {
       state.step = "kategori";
+
       return ctx.editMessageText("Pilih kategori:", {
-        reply_markup: keyboard(OPTIONS.kategori, "addbalance:kategori"),
+        reply_markup: keyboard(
+          OPTIONS.kategori[state.jenis],
+          "addbalance:kategori"
+        ),
       });
     }
 
     if (step === "kategori") {
       state.step = "subKategori";
+
       return ctx.editMessageText("Pilih sub kategori:", {
-        reply_markup: keyboard(OPTIONS.subKategori, "addbalance:subKategori"),
+        reply_markup: keyboard(
+          OPTIONS.subKategori[state.jenis][state.kategori],
+          "addbalance:subKategori"
+        ),
       });
     }
 
@@ -178,7 +227,9 @@ export default {
 
     if (step === "metode") {
       state.step = "tag";
-      return ctx.editMessageText("Label fleksibel untuk filter cepat & analisis tambahan\nMasukkan tag:");
+      return ctx.editMessageText(
+        "Label fleksibel untuk filter cepat & analisis tambahan\nMasukkan tag:"
+      );
     }
   },
 
@@ -209,16 +260,17 @@ export default {
       case "tag":
         state.tag = text;
         state.step = "catatan";
-        return ctx.reply("Info tambahan yang tidak perlu sering dipakai\nMasukkan catatan:");
+        return ctx.reply(
+          "Info tambahan yang tidak perlu sering dipakai\nMasukkan catatan:"
+        );
 
       case "catatan":
         state.catatan = text;
-        state.status ??= "Selesai";
 
         await saveTransaction(state);
         states.delete(ctx.from.id);
 
         return ctx.reply("✅ Transaksi berhasil disimpan");
     }
-  }
+  },
 };
