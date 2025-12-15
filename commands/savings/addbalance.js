@@ -61,6 +61,10 @@ function toNumber(val) {
   return Number(String(val).replace(/\./g, "").replace(",", "."));
 }
 
+function formatNumber(num) {
+  return new Intl.NumberFormat("id-ID").format(num);
+}
+
 // keyboard pilihan (ADA back, TIDAK ada cancel)
 function keyboard(list, prefix) {
   return {
@@ -289,7 +293,7 @@ Jenis: ${state.jenis}
 Kategori: ${state.kategori}
 Sub: ${state.subKategori}
 Deskripsi: ${state.deskripsi}
-Jumlah: ${state.jumlah} ${state.mataUang}
+Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
 Akun: ${state.akun}
 Metode: ${state.metode}
 Tag: ${state.tag}
