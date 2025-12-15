@@ -16,7 +16,6 @@ const OPTIONS = {
       "Belanja",
     ],
     Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
-    Transfer: ["Internal", "External"],
   },
 
   subKategori: {
@@ -37,11 +36,6 @@ const OPTIONS = {
       Refund: ["Refund Belanja", "Cashback"],
       Lainnya: ["Uang Saku", "Bantuan", "Pemasukan Lain"],
     },
-
-    Transfer: {
-      Internal: ["Wallet", "Dana", "Seabank", "Fjlsaldo"],
-      External: ["Ke Orang Lain", "Dari Orang Lain"],
-    },
   },
 
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo"],
@@ -57,11 +51,9 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) =>
-  Number(String(v).replace(/\./g, "").replace(",", "."));
+const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
 
-const formatNumber = (n) =>
-  new Intl.NumberFormat("id-ID").format(n);
+const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
 
 const kbList = (list, prefix) => ({
   inline_keyboard: [
@@ -120,22 +112,24 @@ async function saveTransaction(data) {
     range: "Sheet1!A:O",
     valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [[
-        data.jenis,
-        data.kategori,
-        data.subKategori,
-        data.deskripsi,
-        data.jumlah,
-        data.mataUang,
-        data.akun,
-        data.metode,
-        saldoSebelum,
-        saldoSesudah,
-        data.tag,
-        data.catatan,
-        now,
-        now,
-      ]],
+      values: [
+        [
+          data.jenis,
+          data.kategori,
+          data.subKategori,
+          data.deskripsi,
+          data.jumlah,
+          data.mataUang,
+          data.akun,
+          data.metode,
+          saldoSebelum,
+          saldoSesudah,
+          data.tag,
+          data.catatan,
+          now,
+          now,
+        ],
+      ],
     },
   });
 }
@@ -242,16 +236,19 @@ export default {
 
     switch (state.step) {
       case "kategori":
-        return edit("Pilih kategori:", kbList(
-          OPTIONS.kategori[state.jenis],
-          "addbalance:kategori"
-        ));
+        return edit(
+          "Pilih kategori:",
+          kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori")
+        );
 
       case "subKategori":
-        return edit("Pilih sub kategori:", kbList(
-          OPTIONS.subKategori[state.jenis][state.kategori],
-          "addbalance:subKategori"
-        ));
+        return edit(
+          "Pilih sub kategori:",
+          kbList(
+            OPTIONS.subKategori[state.jenis][state.kategori],
+            "addbalance:subKategori"
+          )
+        );
 
       case "deskripsi":
         return edit("Masukkan deskripsi:", kbText());
@@ -260,22 +257,19 @@ export default {
         return edit("Masukkan jumlah:", kbText());
 
       case "mataUang":
-        return edit("Pilih mata uang:", kbList(
-          OPTIONS.mataUang,
-          "addbalance:mataUang"
-        ));
+        return edit(
+          "Pilih mata uang:",
+          kbList(OPTIONS.mataUang, "addbalance:mataUang")
+        );
 
       case "akun":
-        return edit("Pilih akun:", kbList(
-          OPTIONS.akun,
-          "addbalance:akun"
-        ));
+        return edit("Pilih akun:", kbList(OPTIONS.akun, "addbalance:akun"));
 
       case "metode":
-        return edit("Pilih metode:", kbList(
-          OPTIONS.metode,
-          "addbalance:metode"
-        ));
+        return edit(
+          "Pilih metode:",
+          kbList(OPTIONS.metode, "addbalance:metode")
+        );
 
       case "tag":
         return edit("Masukkan tag:", kbText());
