@@ -146,7 +146,7 @@ async function saveTransaction(data) {
           data.jumlah, // E
           data.mataUang, // F
           data.akun, // G
-          data.status, // H
+          data.metode, // H
           saldoSebelum, // I
           saldoSesudah, // J
           data.tag, // K
