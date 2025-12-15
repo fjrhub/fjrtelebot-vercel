@@ -61,24 +61,23 @@ function toNumber(val) {
   return Number(String(val).replace(/\./g, "").replace(",", "."));
 }
 
-function keyboard(list, prefix, withBack = true) {
-  const rows = list.map((v) => [
-    { text: v, callback_data: `${prefix}:${v}` },
-  ]);
-
-  if (withBack) {
-    rows.push([{ text: "⬅️ Back", callback_data: "addbalance:back" }]);
-  }
-
-  rows.push([{ text: "❌ Cancel", callback_data: "addbalance:cancel" }]);
-  return { inline_keyboard: rows };
+// keyboard pilihan (ADA back, TIDAK ada cancel)
+function keyboard(list, prefix) {
+  return {
+    inline_keyboard: [
+      ...list.map((v) => [
+        { text: v, callback_data: `${prefix}:${v}` },
+      ]),
+      [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
+    ],
+  };
 }
 
+// keyboard input teks (HANYA back)
 function textKeyboard() {
   return {
     inline_keyboard: [
       [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
-      [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
     ],
   };
 }
@@ -109,9 +108,7 @@ async function getLastSaldo(akun) {
 
   const rows = res.data.values || [];
   for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i][6] === akun) {
-      return Number(rows[i][9]) || 0;
-    }
+    if (rows[i][6] === akun) return Number(rows[i][9]) || 0;
   }
   return 0;
 }
@@ -131,24 +128,22 @@ async function saveTransaction(data) {
     range: "Sheet1!A:O",
     valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [
-        [
-          data.jenis,
-          data.kategori,
-          data.subKategori,
-          data.deskripsi,
-          data.jumlah,
-          data.mataUang,
-          data.akun,
-          data.metode,
-          saldoSebelum,
-          saldoSesudah,
-          data.tag,
-          data.catatan, // ✅ TETAP DISIMPAN
-          now,
-          now,
-        ],
-      ],
+      values: [[
+        data.jenis,
+        data.kategori,
+        data.subKategori,
+        data.deskripsi,
+        data.jumlah,
+        data.mataUang,
+        data.akun,
+        data.metode,
+        saldoSebelum,
+        saldoSesudah,
+        data.tag,
+        data.catatan,
+        now,
+        now,
+      ]],
     },
   });
 }
@@ -163,7 +158,14 @@ export default {
     states.set(ctx.from.id, { step: "jenis", history: [] });
 
     return ctx.reply("Pilih jenis transaksi:", {
-      reply_markup: keyboard(OPTIONS.jenis, "addbalance:jenis", false),
+      reply_markup: {
+        inline_keyboard: [
+          ...OPTIONS.jenis.map((v) => [
+            { text: v, callback_data: `addbalance:jenis:${v}` },
+          ]),
+          [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
+        ],
+      },
     });
   },
 
