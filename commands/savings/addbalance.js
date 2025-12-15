@@ -57,34 +57,22 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-function toNumber(val) {
-  return Number(String(val).replace(/\./g, "").replace(",", "."));
-}
+const toNumber = (v) =>
+  Number(String(v).replace(/\./g, "").replace(",", "."));
 
-function formatNumber(num) {
-  return new Intl.NumberFormat("id-ID").format(num);
-}
+const formatNumber = (n) =>
+  new Intl.NumberFormat("id-ID").format(n);
 
-// keyboard pilihan (ADA back, TIDAK ada cancel)
-function keyboard(list, prefix) {
-  return {
-    inline_keyboard: [
-      ...list.map((v) => [
-        { text: v, callback_data: `${prefix}:${v}` },
-      ]),
-      [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
-    ],
-  };
-}
+const kbList = (list, prefix) => ({
+  inline_keyboard: [
+    ...list.map((v) => [{ text: v, callback_data: `${prefix}:${v}` }]),
+    [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
+  ],
+});
 
-// keyboard input teks (HANYA back)
-function textKeyboard() {
-  return {
-    inline_keyboard: [
-      [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
-    ],
-  };
-}
+const kbText = () => ({
+  inline_keyboard: [[{ text: "⬅️ Back", callback_data: "addbalance:back" }]],
+});
 
 /* =========================
    GOOGLE SHEETS
@@ -159,9 +147,7 @@ export default {
   name: "addbalance",
 
   async execute(ctx) {
-    states.set(ctx.from.id, { step: "jenis", history: [] });
-
-    return ctx.reply("Pilih jenis transaksi:", {
+    const msg = await ctx.reply("Pilih jenis transaksi:", {
       reply_markup: {
         inline_keyboard: [
           ...OPTIONS.jenis.map((v) => [
@@ -171,6 +157,13 @@ export default {
         ],
       },
     });
+
+    states.set(ctx.from.id, {
+      step: "jenis",
+      history: [],
+      chatId: ctx.chat.id,
+      messageId: msg.message_id,
+    });
   },
 
   async handleCallback(ctx) {
@@ -178,115 +171,120 @@ export default {
     if (!state) return;
 
     const data = ctx.callbackQuery.data;
+    const edit = (text, kb) =>
+      ctx.api.editMessageText(state.chatId, state.messageId, text, {
+        reply_markup: kb,
+      });
 
     if (data === "addbalance:cancel") {
       states.delete(ctx.from.id);
-      return ctx.editMessageText("❌ Proses dibatalkan.");
+      return edit("❌ Proses dibatalkan.");
     }
 
     if (data === "addbalance:back") {
-      const prev = state.history.pop();
-      if (!prev) return;
-      state.step = prev;
-      return this.renderStep(ctx, state);
+      state.step = state.history.pop();
+      return this.render(ctx, state);
     }
 
     if (data === "addbalance:save") {
       await saveTransaction(state);
       states.delete(ctx.from.id);
-      return ctx.editMessageText("✅ Transaksi berhasil disimpan");
+      return edit("✅ Transaksi berhasil disimpan");
     }
 
     const [, step, value] = data.split(":");
     state.history.push(state.step);
     state[step] = value;
 
-    if (step === "jenis") state.step = "kategori";
-    else if (step === "kategori") state.step = "subKategori";
-    else if (step === "subKategori") state.step = "deskripsi";
-    else if (step === "mataUang") state.step = "akun";
-    else if (step === "akun") state.step = "metode";
-    else if (step === "metode") state.step = "tag";
+    const flow = {
+      jenis: "kategori",
+      kategori: "subKategori",
+      subKategori: "deskripsi",
+      mataUang: "akun",
+      akun: "metode",
+      metode: "tag",
+    };
 
-    return this.renderStep(ctx, state);
+    state.step = flow[step];
+    return this.render(ctx, state);
   },
 
   async handleText(ctx) {
     const state = states.get(ctx.from.id);
     if (!state) return;
 
+    await ctx.deleteMessage().catch(() => {});
     const text = ctx.message.text;
     state.history.push(state.step);
 
     if (state.step === "deskripsi") {
       state.deskripsi = text;
       state.step = "jumlah";
-      return ctx.reply("Masukkan jumlah:", { reply_markup: textKeyboard() });
-    }
-
-    if (state.step === "jumlah") {
+    } else if (state.step === "jumlah") {
       state.jumlah = toNumber(text);
       state.step = "mataUang";
-      return ctx.reply("Pilih mata uang:", {
-        reply_markup: keyboard(OPTIONS.mataUang, "addbalance:mataUang"),
-      });
-    }
-
-    if (state.step === "tag") {
+    } else if (state.step === "tag") {
       state.tag = text;
       state.step = "catatan";
-      return ctx.reply("Masukkan catatan:", {
-        reply_markup: textKeyboard(),
-      });
-    }
-
-    if (state.step === "catatan") {
+    } else if (state.step === "catatan") {
       state.catatan = text;
       state.step = "confirm";
-      return this.renderStep(ctx, state);
     }
+
+    return this.render(ctx, state);
   },
 
-  async renderStep(ctx, state) {
+  async render(ctx, state) {
+    const edit = (text, kb) =>
+      ctx.api.editMessageText(state.chatId, state.messageId, text, {
+        reply_markup: kb,
+      });
+
     switch (state.step) {
       case "kategori":
-        return ctx.editMessageText("Pilih kategori:", {
-          reply_markup: keyboard(
-            OPTIONS.kategori[state.jenis],
-            "addbalance:kategori"
-          ),
-        });
+        return edit("Pilih kategori:", kbList(
+          OPTIONS.kategori[state.jenis],
+          "addbalance:kategori"
+        ));
 
       case "subKategori":
-        return ctx.editMessageText("Pilih sub kategori:", {
-          reply_markup: keyboard(
-            OPTIONS.subKategori[state.jenis][state.kategori],
-            "addbalance:subKategori"
-          ),
-        });
+        return edit("Pilih sub kategori:", kbList(
+          OPTIONS.subKategori[state.jenis][state.kategori],
+          "addbalance:subKategori"
+        ));
 
       case "deskripsi":
-        return ctx.editMessageText("Masukkan deskripsi:", {
-          reply_markup: textKeyboard(),
-        });
+        return edit("Masukkan deskripsi:", kbText());
+
+      case "jumlah":
+        return edit("Masukkan jumlah:", kbText());
+
+      case "mataUang":
+        return edit("Pilih mata uang:", kbList(
+          OPTIONS.mataUang,
+          "addbalance:mataUang"
+        ));
 
       case "akun":
-        return ctx.reply("Pilih akun:", {
-          reply_markup: keyboard(OPTIONS.akun, "addbalance:akun"),
-        });
+        return edit("Pilih akun:", kbList(
+          OPTIONS.akun,
+          "addbalance:akun"
+        ));
 
       case "metode":
-        return ctx.editMessageText("Pilih metode:", {
-          reply_markup: keyboard(OPTIONS.metode, "addbalance:metode"),
-        });
+        return edit("Pilih metode:", kbList(
+          OPTIONS.metode,
+          "addbalance:metode"
+        ));
 
       case "tag":
-        return ctx.editMessageText("Masukkan tag:", {
-          reply_markup: textKeyboard(),
-        });
+        return edit("Masukkan tag:", kbText());
+
+      case "catatan":
+        return edit("Masukkan catatan:", kbText());
 
       case "confirm":
-        return ctx.reply(
+        return edit(
           `🧾 Konfirmasi Transaksi
 
 Jenis: ${state.jenis}
@@ -300,13 +298,11 @@ Tag: ${state.tag}
 
 Lanjutkan?`,
           {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: "✅ Simpan", callback_data: "addbalance:save" }],
-                [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
-                [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
-              ],
-            },
+            inline_keyboard: [
+              [{ text: "✅ Simpan", callback_data: "addbalance:save" }],
+              [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
+              [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
+            ],
           }
         );
     }
