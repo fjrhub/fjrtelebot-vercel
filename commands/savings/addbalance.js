@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 
 /* =========================
-   PILIHAN (BISA DITAMBAH)
+   OPTIONS
 ========================= */
 const OPTIONS = {
   jenis: ["Pemasukan", "Pengeluaran", "Transfer"],
@@ -46,7 +46,13 @@ const OPTIONS = {
 
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo"],
   metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
+  mataUang: ["IDR", "USDT"],
 };
+
+/* =========================
+   STATE
+========================= */
+const states = new Map();
 
 /* =========================
    UTIL
@@ -55,22 +61,30 @@ function toNumber(val) {
   return Number(String(val).replace(/\./g, "").replace(",", "."));
 }
 
-function keyboard(list, prefix) {
+function keyboard(list, prefix, withBack = true) {
+  const rows = list.map((v) => [
+    { text: v, callback_data: `${prefix}:${v}` },
+  ]);
+
+  if (withBack) {
+    rows.push([{ text: "⬅️ Back", callback_data: "addbalance:back" }]);
+  }
+
+  rows.push([{ text: "❌ Cancel", callback_data: "addbalance:cancel" }]);
+  return { inline_keyboard: rows };
+}
+
+function textKeyboard() {
   return {
     inline_keyboard: [
-      ...list.map((v) => [{ text: v, callback_data: `${prefix}:${v}` }]),
+      [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
       [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
     ],
   };
 }
 
 /* =========================
-   STATE
-========================= */
-const states = new Map();
-
-/* =========================
-   GOOGLE SHEETS CLIENT
+   GOOGLE SHEETS
 ========================= */
 function sheetsClient() {
   const auth = new google.auth.GoogleAuth({
@@ -86,44 +100,27 @@ function sheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-/* =========================
-   AMBIL SALDO TERAKHIR (K)
-========================= */
 async function getLastSaldo(akun) {
   const sheets = sheetsClient();
-
-  // Ambil SEMUA data baris (A–O)
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: "Sheet1!A2:N",
   });
 
   const rows = res.data.values || [];
-  if (!rows.length) return 0;
-
-  // Cari dari bawah (transaksi terakhir)
   for (let i = rows.length - 1; i >= 0; i--) {
-    const akunRow = rows[i][6]; // G = Akun
-    const saldoAfter = rows[i][9]; // J = Saldo Setelah
-
-    if (akunRow === akun) {
-      return Number(saldoAfter) || 0;
+    if (rows[i][6] === akun) {
+      return Number(rows[i][9]) || 0;
     }
   }
-
-  // Belum pernah ada transaksi akun ini
   return 0;
 }
 
-/* =========================
-   SIMPAN TRANSAKSI
-========================= */
 async function saveTransaction(data) {
   const sheets = sheetsClient();
   const now = new Date().toISOString();
 
   const saldoSebelum = await getLastSaldo(data.akun);
-
   const saldoSesudah =
     data.jenis === "Pemasukan"
       ? saldoSebelum + data.jumlah
@@ -136,20 +133,20 @@ async function saveTransaction(data) {
     requestBody: {
       values: [
         [
-          data.jenis, // A
-          data.kategori, // B
-          data.subKategori, // C
-          data.deskripsi, // D
-          data.jumlah, // E
-          data.mataUang, // F
-          data.akun, // G
-          data.metode, // H
-          saldoSebelum, // I
-          saldoSesudah, // J
-          data.tag, // K
-          data.catatan, // L
-          now, // M
-          now, // N
+          data.jenis,
+          data.kategori,
+          data.subKategori,
+          data.deskripsi,
+          data.jumlah,
+          data.mataUang,
+          data.akun,
+          data.metode,
+          saldoSebelum,
+          saldoSesudah,
+          data.tag,
+          data.catatan, // ✅ TETAP DISIMPAN
+          now,
+          now,
         ],
       ],
     },
@@ -163,10 +160,10 @@ export default {
   name: "addbalance",
 
   async execute(ctx) {
-    states.set(ctx.from.id, { step: "jenis" });
+    states.set(ctx.from.id, { step: "jenis", history: [] });
 
-    await ctx.reply("Pilih jenis transaksi:", {
-      reply_markup: keyboard(OPTIONS.jenis, "addbalance:jenis"),
+    return ctx.reply("Pilih jenis transaksi:", {
+      reply_markup: keyboard(OPTIONS.jenis, "addbalance:jenis", false),
     });
   },
 
@@ -174,60 +171,38 @@ export default {
     const state = states.get(ctx.from.id);
     if (!state) return;
 
-    const [, step, value] = ctx.callbackQuery.data.split(":");
+    const data = ctx.callbackQuery.data;
 
-    if (step === "cancel") {
+    if (data === "addbalance:cancel") {
       states.delete(ctx.from.id);
       return ctx.editMessageText("❌ Proses dibatalkan.");
     }
 
-    if (value === "manual") {
-      state.step = step;
-      return ctx.editMessageText(`Masukkan ${step} secara manual:`);
+    if (data === "addbalance:back") {
+      const prev = state.history.pop();
+      if (!prev) return;
+      state.step = prev;
+      return this.renderStep(ctx, state);
     }
 
+    if (data === "addbalance:save") {
+      await saveTransaction(state);
+      states.delete(ctx.from.id);
+      return ctx.editMessageText("✅ Transaksi berhasil disimpan");
+    }
+
+    const [, step, value] = data.split(":");
+    state.history.push(state.step);
     state[step] = value;
 
-    if (step === "jenis") {
-      state.step = "kategori";
+    if (step === "jenis") state.step = "kategori";
+    else if (step === "kategori") state.step = "subKategori";
+    else if (step === "subKategori") state.step = "deskripsi";
+    else if (step === "mataUang") state.step = "akun";
+    else if (step === "akun") state.step = "metode";
+    else if (step === "metode") state.step = "tag";
 
-      return ctx.editMessageText("Pilih kategori:", {
-        reply_markup: keyboard(
-          OPTIONS.kategori[state.jenis],
-          "addbalance:kategori"
-        ),
-      });
-    }
-
-    if (step === "kategori") {
-      state.step = "subKategori";
-
-      return ctx.editMessageText("Pilih sub kategori:", {
-        reply_markup: keyboard(
-          OPTIONS.subKategori[state.jenis][state.kategori],
-          "addbalance:subKategori"
-        ),
-      });
-    }
-
-    if (step === "subKategori") {
-      state.step = "deskripsi";
-      return ctx.editMessageText("Masukkan deskripsi:");
-    }
-
-    if (step === "akun") {
-      state.step = "metode";
-      return ctx.editMessageText("Pilih metode:", {
-        reply_markup: keyboard(OPTIONS.metode, "addbalance:metode"),
-      });
-    }
-
-    if (step === "metode") {
-      state.step = "tag";
-      return ctx.editMessageText(
-        "Label fleksibel untuk filter cepat & analisis tambahan\nMasukkan tag:"
-      );
-    }
+    return this.renderStep(ctx, state);
   },
 
   async handleText(ctx) {
@@ -235,39 +210,99 @@ export default {
     if (!state) return;
 
     const text = ctx.message.text;
+    state.history.push(state.step);
 
+    if (state.step === "deskripsi") {
+      state.deskripsi = text;
+      state.step = "jumlah";
+      return ctx.reply("Masukkan jumlah:", { reply_markup: textKeyboard() });
+    }
+
+    if (state.step === "jumlah") {
+      state.jumlah = toNumber(text);
+      state.step = "mataUang";
+      return ctx.reply("Pilih mata uang:", {
+        reply_markup: keyboard(OPTIONS.mataUang, "addbalance:mataUang"),
+      });
+    }
+
+    if (state.step === "tag") {
+      state.tag = text;
+      state.step = "catatan";
+      return ctx.reply("Masukkan catatan:", {
+        reply_markup: textKeyboard(),
+      });
+    }
+
+    if (state.step === "catatan") {
+      state.catatan = text;
+      state.step = "confirm";
+      return this.renderStep(ctx, state);
+    }
+  },
+
+  async renderStep(ctx, state) {
     switch (state.step) {
+      case "kategori":
+        return ctx.editMessageText("Pilih kategori:", {
+          reply_markup: keyboard(
+            OPTIONS.kategori[state.jenis],
+            "addbalance:kategori"
+          ),
+        });
+
+      case "subKategori":
+        return ctx.editMessageText("Pilih sub kategori:", {
+          reply_markup: keyboard(
+            OPTIONS.subKategori[state.jenis][state.kategori],
+            "addbalance:subKategori"
+          ),
+        });
+
       case "deskripsi":
-        state.deskripsi = text;
-        state.step = "jumlah";
-        return ctx.reply("Masukkan jumlah (contoh: 10.000)");
+        return ctx.editMessageText("Masukkan deskripsi:", {
+          reply_markup: textKeyboard(),
+        });
 
-      case "jumlah":
-        state.jumlah = toNumber(text);
-        state.step = "mataUang";
-        return ctx.reply("Masukkan mata uang (IDR / USD / USDT)");
-
-      case "mataUang":
-        state.mataUang = text.toUpperCase();
-        state.step = "akun";
+      case "akun":
         return ctx.reply("Pilih akun:", {
           reply_markup: keyboard(OPTIONS.akun, "addbalance:akun"),
         });
 
+      case "metode":
+        return ctx.editMessageText("Pilih metode:", {
+          reply_markup: keyboard(OPTIONS.metode, "addbalance:metode"),
+        });
+
       case "tag":
-        state.tag = text;
-        state.step = "catatan";
+        return ctx.editMessageText("Masukkan tag:", {
+          reply_markup: textKeyboard(),
+        });
+
+      case "confirm":
         return ctx.reply(
-          "Info tambahan yang tidak perlu sering dipakai\nMasukkan catatan:"
+          `🧾 Konfirmasi Transaksi
+
+Jenis: ${state.jenis}
+Kategori: ${state.kategori}
+Sub: ${state.subKategori}
+Deskripsi: ${state.deskripsi}
+Jumlah: ${state.jumlah} ${state.mataUang}
+Akun: ${state.akun}
+Metode: ${state.metode}
+Tag: ${state.tag}
+
+Lanjutkan?`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "✅ Simpan", callback_data: "addbalance:save" }],
+                [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
+                [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
+              ],
+            },
+          }
         );
-
-      case "catatan":
-        state.catatan = text;
-
-        await saveTransaction(state);
-        states.delete(ctx.from.id);
-
-        return ctx.reply("✅ Transaksi berhasil disimpan");
     }
   },
 };
