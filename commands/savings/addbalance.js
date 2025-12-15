@@ -15,14 +15,14 @@ const OPTIONS = {
       "Pendidikan",
       "Belanja",
     ],
-    Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund"],
-    Transfer: ["Internal"],
+    Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
+    Transfer: ["Internal", "External"],
   },
 
   subKategori: {
     Pengeluaran: {
       Makanan: ["Makan Harian", "Jajan", "Kopi"],
-      Transportasi: ["Bensin", "Ojol", "Parkir"],
+      Transportasi: ["Bensin", "Ojol", "Parkir", "Servis", "Darurat"],
       Hiburan: ["Game", "Streaming"],
       Utilitas: ["Internet", "Listrik", "Pulsa"],
       Pendidikan: ["Kursus", "Buku"],
@@ -35,10 +35,12 @@ const OPTIONS = {
       Investasi: ["Crypto", "Saham", "Dividen"],
       Hadiah: ["Uang Saku", "Hadiah", "Donasi"],
       Refund: ["Refund Belanja", "Cashback"],
+      Lainnya: ["Uang Saku", "Bantuan", "Pemasukan Lain"],
     },
 
     Transfer: {
       Internal: ["Wallet", "Dana", "Seabank", "Fjlsaldo"],
+      External: ["Ke Orang Lain", "Dari Orang Lain"],
     },
   },
 
