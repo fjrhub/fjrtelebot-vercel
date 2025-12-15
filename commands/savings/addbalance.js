@@ -4,7 +4,7 @@ import { google } from "googleapis";
    PILIHAN (BISA DITAMBAH)
 ========================= */
 const OPTIONS = {
-  jenis: ["Pemasukan", "Pengeluaran"],
+  jenis: ["Pemasukan", "Pengeluaran", "Transfer"],
 
   kategori: {
     Pengeluaran: [
@@ -13,10 +13,10 @@ const OPTIONS = {
       "Hiburan",
       "Utilitas",
       "Pendidikan",
-      "Kesehatan",
-      "Lainnya",
+      "Belanja",
     ],
-    Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
+    Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund"],
+    Transfer: ["Internal"],
   },
 
   subKategori: {
@@ -26,22 +26,23 @@ const OPTIONS = {
       Hiburan: ["Game", "Streaming"],
       Utilitas: ["Internet", "Listrik", "Pulsa"],
       Pendidikan: ["Kursus", "Buku"],
-      Kesehatan: ["Obat", "Dokter"],
-      Lainnya: ["Lain-lain"],
+      Belanja: ["Online", "Offline", "Langganan"],
     },
 
     Pemasukan: {
       Gaji: ["Gaji Bulanan", "Bonus", "THR"],
       Usaha: ["Penjualan", "Jasa", "Komisi"],
       Investasi: ["Crypto", "Saham", "Dividen"],
-      Hadiah: ["Hadiah", "Donasi"],
+      Hadiah: ["Uang Saku", "Hadiah", "Donasi"],
       Refund: ["Refund Belanja", "Cashback"],
-      Lainnya: ["Lain-lain"],
+    },
+
+    Transfer: {
+      Internal: ["Wallet", "Dana", "Seabank", "Fjlsaldo"],
     },
   },
 
-  akun: ["Cash", "Dana", "Seabank", "Bank", "Binance", "Wallet"],
-
+  akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo"],
   metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
 };
 
