@@ -14,7 +14,7 @@ function sheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-async function getLastNonZeroSaldo() {
+async function getAllSaldo() {
   const sheets = sheetsClient();
 
   const res = await sheets.spreadsheets.values.get({
@@ -22,28 +22,22 @@ async function getLastNonZeroSaldo() {
     range: "Sheet1!S2:T",
   });
 
-  const rows = res.data.values || [];
-
-  // scan dari bawah → cari saldo terakhir yang > 0
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const akun = rows[i][0];
-    const saldo = Number(rows[i][1]) || 0;
-
-    if (saldo > 0) {
-      return { akun, saldo };
-    }
-  }
-
-  return { akun: "-", saldo: 0 };
+  return res.data.values || [];
 }
 
 export default {
   name: "balance",
   async execute(ctx) {
-    const { akun, saldo } = await getLastNonZeroSaldo();
+    const rows = await getAllSaldo();
 
-    await ctx.reply(
-      `Saldo terakhir:\n${akun}: ${saldo.toLocaleString("id-ID")}`
-    );
+    if (!rows.length) {
+      return ctx.reply("Tidak ada data saldo.");
+    }
+
+    const message = rows
+      .map(([akun, saldo]) => `${akun}\t${Number(saldo).toLocaleString("id-ID")}`)
+      .join("\n");
+
+    await ctx.reply(message);
   },
 };
