@@ -268,7 +268,11 @@ Tag: ${state.tag}
         return edit("Masukkan deskripsi:", kbText());
 
       case "jumlah":
-        return edit("Masukkan jumlah:", kbText());
+        const promptJumlah =
+          state.jenis === "Pemasukan"
+            ? "Masukkan jumlah pemasukan:"
+            : "Masukkan jumlah pengeluaran:";
+        return edit(promptJumlah, kbText());
 
       case "mataUang":
         return edit(
