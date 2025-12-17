@@ -249,6 +249,16 @@ Tag: ${state.tag}
       });
 
     switch (state.step) {
+      case "jenis":
+        return edit("Pilih jenis transaksi:", {
+          inline_keyboard: [
+            ...OPTIONS.jenis.map((v) => [
+              { text: v, callback_data: `addbalance:jenis:${v}` },
+            ]),
+            [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
+          ],
+        });
+
       case "kategori":
         return edit(
           "Pilih kategori:",
