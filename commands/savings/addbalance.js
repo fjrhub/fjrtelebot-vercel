@@ -51,8 +51,11 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
-const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
+const toNumber = (v) =>
+  Number(String(v).replace(/\./g, "").replace(",", "."));
+
+const formatNumber = (n) =>
+  new Intl.NumberFormat("id-ID").format(n);
 
 const kbList = (list, prefix) => ({
   inline_keyboard: [
@@ -82,45 +85,30 @@ function sheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-async function getLastSaldo(akun) {
+async function fetchAllRows() {
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: "Sheet1!A2:N",
   });
-
-  const rows = res.data.values || [];
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i][6] === akun) return Number(rows[i][9]) || 0;
-  }
-  return 0;
+  return res.data.values || [];
 }
 
-async function getLastCurrency(akun) {
-  const sheets = sheetsClient();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!A2:N",
-  });
-
-  const rows = res.data.values || [];
+function getLastFromCache(rows, akun) {
   for (let i = rows.length - 1; i >= 0; i--) {
     if (rows[i][6] === akun) {
-      return rows[i][5] || null; // kolom F = mataUang
+      return {
+        saldo: Number(rows[i][9]) || 0,
+        mataUang: rows[i][5] || null,
+      };
     }
   }
-  return null;
+  return { saldo: 0, mataUang: null };
 }
 
-async function saveTransaction(data) {
+async function appendTransaction(data) {
   const sheets = sheetsClient();
   const now = new Date().toISOString();
-
-  const saldoSebelum = await getLastSaldo(data.akun);
-  const saldoSesudah =
-    data.jenis === "Pemasukan"
-      ? saldoSebelum + data.jumlah
-      : saldoSebelum - data.jumlah;
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: process.env.SPREADSHEET_ID,
@@ -137,8 +125,8 @@ async function saveTransaction(data) {
           data.mataUang,
           data.akun,
           data.metode,
-          saldoSebelum,
-          saldoSesudah,
+          data.saldoSebelum,
+          data.saldoSesudah,
           data.tag,
           data.catatan,
           now,
@@ -156,6 +144,8 @@ export default {
   name: "addbalance",
 
   async execute(ctx) {
+    const rows = await fetchAllRows(); // 🔥 1x FETCH
+
     const msg = await ctx.reply("Pilih jenis transaksi:", {
       reply_markup: {
         inline_keyboard: [
@@ -170,6 +160,7 @@ export default {
     states.set(ctx.from.id, {
       step: "jenis",
       history: [],
+      rows, // 👈 CACHE DATA
       chatId: ctx.chat.id,
       messageId: msg.message_id,
     });
@@ -196,8 +187,9 @@ export default {
     }
 
     if (data === "addbalance:save") {
-      await saveTransaction(state);
+      await appendTransaction(state); // 🔥 1x APPEND
       states.delete(ctx.from.id);
+
       return edit(
         `
 ✅ Transaksi berhasil disimpan!
@@ -218,12 +210,14 @@ Tag: ${state.tag}
     state.history.push(state.step);
     state[step] = value;
 
-    // 🔥 VALIDASI MATA UANG SETELAH PILIH AKUN
+    // VALIDASI AKUN → MATA UANG
     if (step === "akun") {
-      const lastCurrency = await getLastCurrency(value);
+      const { saldo, mataUang } = getLastFromCache(state.rows, value);
 
-      if (lastCurrency) {
-        state.mataUang = lastCurrency;
+      state.saldoSebelum = saldo;
+
+      if (mataUang) {
+        state.mataUang = mataUang;
         state.step = "metode";
       } else {
         state.step = "mataUang";
@@ -236,7 +230,7 @@ Tag: ${state.tag}
       jenis: "kategori",
       kategori: "subKategori",
       subKategori: "deskripsi",
-      mataUang: "akun",
+      mataUang: "metode",
       metode: "tag",
     };
 
@@ -264,6 +258,13 @@ Tag: ${state.tag}
     } else if (state.step === "catatan") {
       state.catatan = text;
       state.step = "confirm";
+
+      const saldoSesudah =
+        state.jenis === "Pemasukan"
+          ? state.saldoSebelum + state.jumlah
+          : state.saldoSebelum - state.jumlah;
+
+      state.saldoSesudah = saldoSesudah;
     }
 
     return this.render(ctx, state);
