@@ -21,7 +21,7 @@ function sheetsClient() {
    UTIL
 ========================= */
 const formatIDR = (n) =>
-  "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n));
+  "Rp" + Math.round(n).toLocaleString("id-ID");
 
 function getJakartaTime() {
   const now = new Date(
@@ -34,7 +34,7 @@ function getJakartaTime() {
   const hh = String(now.getHours()).padStart(2, "0");
   const min = String(now.getMinutes()).padStart(2, "0");
 
-  return `${dd}/${mm}/${yyyy} ${hh}.${min} WIB`;
+  return `${dd}/${mm}/${yyyy} ${hh}.${min}`;
 }
 
 /* =========================
@@ -60,34 +60,31 @@ export default {
     const rows = await getAllSaldo();
 
     if (!rows.length) {
-      return ctx.reply("❌ Tidak ada data saldo.");
+      return ctx.reply("Tidak ada data saldo.");
     }
 
     let total = 0;
 
-    const akunList = rows.map(([akun, rawSaldo]) => {
+    const accountMessages = rows.map(([akun, rawSaldo]) => {
       let saldo = Number(rawSaldo);
 
-      // 🔥 FIX UTAMA: jika #N/A, kosong, atau invalid → 0
-      if (!rawSaldo || isNaN(saldo)) {
-        saldo = 0;
-      }
+      // #N/A, kosong, atau invalid → 0
+      if (!rawSaldo || isNaN(saldo)) saldo = 0;
 
       total += saldo;
 
-      return `🏦 ${akun}\n💰 ${formatIDR(saldo)}`;
+      return `🧾 Account: ${akun}\n💰 Balance: ${formatIDR(saldo)}`;
     });
 
     const message = `
-📊 *Saldo Per Akun*
+📊 Account Balances
 
-${akunList.join("\n\n")}
+${accountMessages.join("\n\n")}
 
-━━━━━━━━━━━━
-💼 *Total:* ${formatIDR(total)}
-📅 *Last update:* ${getJakartaTime()}
+🔢 Total Balance: ${formatIDR(total)}
+📅 Last updated: ${getJakartaTime()}
 `.trim();
 
-    await ctx.reply(message, { parse_mode: "Markdown" });
+    await ctx.reply(message);
   },
 };
