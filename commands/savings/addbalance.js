@@ -187,9 +187,21 @@ export default {
     }
 
     if (data === "addbalance:save") {
-      await appendTransaction(state); // ✅ 1x APPEND
+      await appendTransaction(state);
       states.delete(ctx.from.id);
-      return edit("✅ Transaksi berhasil disimpan!");
+
+      return edit(
+        `✅ Transaksi berhasil disimpan!
+
+Jenis: ${state.jenis}
+Kategori: ${state.kategori}
+Sub: ${state.subKategori}
+Deskripsi: ${state.deskripsi}
+Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
+Akun: ${state.akun}
+Metode: ${state.metode}
+Tag: ${state.tag || "-"}`
+      );
     }
 
     const [, step, value] = data.split(":");
