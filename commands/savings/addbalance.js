@@ -52,7 +52,6 @@ const states = new Map();
    UTIL
 ========================= */
 const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
-
 const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
 
 const kbList = (list, prefix) => ({
@@ -95,6 +94,22 @@ async function getLastSaldo(akun) {
     if (rows[i][6] === akun) return Number(rows[i][9]) || 0;
   }
   return 0;
+}
+
+async function getLastCurrency(akun) {
+  const sheets = sheetsClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: "Sheet1!A2:N",
+  });
+
+  const rows = res.data.values || [];
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i][6] === akun) {
+      return rows[i][5] || null; // kolom F = mataUang
+    }
+  }
+  return null;
 }
 
 async function saveTransaction(data) {
@@ -183,7 +198,6 @@ export default {
     if (data === "addbalance:save") {
       await saveTransaction(state);
       states.delete(ctx.from.id);
-      // Gunakan template literal untuk menampilkan detail transaksi
       return edit(
         `
 ✅ Transaksi berhasil disimpan!
@@ -196,7 +210,7 @@ Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
 Akun: ${state.akun}
 Metode: ${state.metode}
 Tag: ${state.tag}
-      `.trim()
+        `.trim()
       );
     }
 
@@ -204,12 +218,25 @@ Tag: ${state.tag}
     state.history.push(state.step);
     state[step] = value;
 
+    // 🔥 VALIDASI MATA UANG SETELAH PILIH AKUN
+    if (step === "akun") {
+      const lastCurrency = await getLastCurrency(value);
+
+      if (lastCurrency) {
+        state.mataUang = lastCurrency;
+        state.step = "metode";
+      } else {
+        state.step = "mataUang";
+      }
+
+      return this.render(ctx, state);
+    }
+
     const flow = {
       jenis: "kategori",
       kategori: "subKategori",
       subKategori: "deskripsi",
       mataUang: "akun",
-      akun: "metode",
       metode: "tag",
     };
 
@@ -230,7 +257,7 @@ Tag: ${state.tag}
       state.step = "jumlah";
     } else if (state.step === "jumlah") {
       state.jumlah = toNumber(text);
-      state.step = "mataUang";
+      state.step = "akun";
     } else if (state.step === "tag") {
       state.tag = text;
       state.step = "catatan";
@@ -250,14 +277,7 @@ Tag: ${state.tag}
 
     switch (state.step) {
       case "jenis":
-        return edit("Pilih jenis transaksi:", {
-          inline_keyboard: [
-            ...OPTIONS.jenis.map((v) => [
-              { text: v, callback_data: `addbalance:jenis:${v}` },
-            ]),
-            [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
-          ],
-        });
+        return edit("Pilih jenis transaksi:", kbList(OPTIONS.jenis, "addbalance:jenis"));
 
       case "kategori":
         return edit(
@@ -278,20 +298,16 @@ Tag: ${state.tag}
         return edit("Masukkan deskripsi:", kbText());
 
       case "jumlah":
-        const promptJumlah =
-          state.jenis === "Pemasukan"
-            ? "Masukkan jumlah pemasukan:"
-            : "Masukkan jumlah pengeluaran:";
-        return edit(promptJumlah, kbText());
-
-      case "mataUang":
-        return edit(
-          "Pilih mata uang:",
-          kbList(OPTIONS.mataUang, "addbalance:mataUang")
-        );
+        return edit("Masukkan jumlah:", kbText());
 
       case "akun":
         return edit("Pilih akun:", kbList(OPTIONS.akun, "addbalance:akun"));
+
+      case "mataUang":
+        return edit(
+          "Pilih mata uang (akun baru):",
+          kbList(OPTIONS.mataUang, "addbalance:mataUang")
+        );
 
       case "metode":
         return edit(
