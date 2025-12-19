@@ -44,7 +44,7 @@ async function getAllSaldo() {
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!S2:T", // S = Akun, T = Saldo
+    range: "Sheet1!S2:T", // Akun | Saldo
   });
 
   return res.data.values || [];
@@ -65,16 +65,18 @@ export default {
 
     let total = 0;
 
-    const akunList = rows
-      .map(([akun, rawSaldo]) => {
-        const saldo = Number(rawSaldo);
-        if (!akun || isNaN(saldo)) return null;
+    const akunList = rows.map(([akun, rawSaldo]) => {
+      let saldo = Number(rawSaldo);
 
-        total += saldo;
+      // 🔥 FIX UTAMA: jika #N/A, kosong, atau invalid → 0
+      if (!rawSaldo || isNaN(saldo)) {
+        saldo = 0;
+      }
 
-        return `🏦 ${akun}\n💰 ${formatIDR(saldo)}`;
-      })
-      .filter(Boolean);
+      total += saldo;
+
+      return `🏦 ${akun}\n💰 ${formatIDR(saldo)}`;
+    });
 
     const message = `
 📊 *Saldo Per Akun*
