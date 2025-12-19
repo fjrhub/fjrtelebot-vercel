@@ -23,6 +23,9 @@ function sheetsClient() {
 const formatIDR = (n) =>
   "Rp" + Math.round(n).toLocaleString("id-ID");
 
+const formatUSDT = (n) =>
+  Number(n).toFixed(2) + " USDT";
+
 function getJakartaTime() {
   const now = new Date(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" })
@@ -34,17 +37,18 @@ function getJakartaTime() {
   const hh = String(now.getHours()).padStart(2, "0");
   const min = String(now.getMinutes()).padStart(2, "0");
 
-  return `${dd}/${mm}/${yyyy} ${hh}.${min}`;
+  return `${dd}/${mm}/${yyyy} ${hh}.${min} WIB`;
 }
 
 /* =========================
    DATA
 ========================= */
-async function getAllSaldo() {
+async function getAllAccounts() {
   const sheets = sheetsClient();
+
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!S2:T", // Akun | Saldo
+    range: "Sheet1!S2:U", // S=Account | T=Saldo | U=MataUang
   });
 
   return res.data.values || [];
@@ -57,23 +61,31 @@ export default {
   name: "balance",
 
   async execute(ctx) {
-    const rows = await getAllSaldo();
+    const rows = await getAllAccounts();
 
     if (!rows.length) {
-      return ctx.reply("Tidak ada data saldo.");
+      return ctx.reply("Tidak ada data akun.");
     }
 
-    let total = 0;
+    let totalIDR = 0;
+    let totalUSDT = 0;
 
-    const accountMessages = rows.map(([akun, rawSaldo]) => {
+    const accountMessages = rows.map(([akun, rawSaldo, mataUang]) => {
       let saldo = Number(rawSaldo);
 
-      // #N/A, kosong, atau invalid → 0
+      // #N/A, kosong, invalid → 0
       if (!rawSaldo || isNaN(saldo)) saldo = 0;
 
-      total += saldo;
+      const currency = (mataUang || "IDR").toUpperCase();
 
-      return `🧾 Account: ${akun}\n💰 Balance: ${formatIDR(saldo)}`;
+      if (currency === "USDT") {
+        totalUSDT += saldo;
+        return `🧾 Account : ${akun}\n💰 Balance: ${formatUSDT(saldo)}`;
+      }
+
+      // default IDR
+      totalIDR += saldo;
+      return `🧾 Account : ${akun}\n💰 Balance: ${formatIDR(saldo)}`;
     });
 
     const message = `
@@ -81,7 +93,9 @@ export default {
 
 ${accountMessages.join("\n\n")}
 
-🔢 Total Balance: ${formatIDR(total)}
+━━━━━━━━━━━━
+🔢 Total IDR : ${formatIDR(totalIDR)}
+🔢 Total USDT: ${formatUSDT(totalUSDT)}
 📅 Last updated: ${getJakartaTime()}
 `.trim();
 
