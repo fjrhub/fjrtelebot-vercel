@@ -51,11 +51,9 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) =>
-  Number(String(v).replace(/\./g, "").replace(",", "."));
+const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
 
-const formatNumber = (n) =>
-  new Intl.NumberFormat("id-ID").format(n);
+const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
 
 const kbList = (list, prefix) => ({
   inline_keyboard: [
@@ -85,21 +83,23 @@ function sheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
+/* 🔥 FETCH HANYA DATA YANG DIPAKAI */
 async function fetchAllRows() {
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!A2:N",
+    range: "Sheet1!F2:J", // F=mataUang, G=akun, J=saldo
   });
   return res.data.values || [];
 }
 
+/* 🔥 AMBIL DARI CACHE */
 function getLastFromCache(rows, akun) {
   for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i][6] === akun) {
+    if (rows[i][1] === akun) {
       return {
-        saldo: Number(rows[i][9]) || 0,
-        mataUang: rows[i][5] || null,
+        mataUang: rows[i][0] || null,
+        saldo: Number(rows[i][4]) || 0,
       };
     }
   }
@@ -144,7 +144,7 @@ export default {
   name: "addbalance",
 
   async execute(ctx) {
-    const rows = await fetchAllRows(); // 🔥 1x FETCH
+    const rows = await fetchAllRows(); // ✅ 1x FETCH
 
     const msg = await ctx.reply("Pilih jenis transaksi:", {
       reply_markup: {
@@ -160,7 +160,7 @@ export default {
     states.set(ctx.from.id, {
       step: "jenis",
       history: [],
-      rows, // 👈 CACHE DATA
+      rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
     });
@@ -187,41 +187,21 @@ export default {
     }
 
     if (data === "addbalance:save") {
-      await appendTransaction(state); // 🔥 1x APPEND
+      await appendTransaction(state); // ✅ 1x APPEND
       states.delete(ctx.from.id);
-
-      return edit(
-        `
-✅ Transaksi berhasil disimpan!
-
-Jenis: ${state.jenis}
-Kategori: ${state.kategori}
-Sub: ${state.subKategori}
-Deskripsi: ${state.deskripsi}
-Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
-Akun: ${state.akun}
-Metode: ${state.metode}
-Tag: ${state.tag}
-        `.trim()
-      );
+      return edit("✅ Transaksi berhasil disimpan!");
     }
 
     const [, step, value] = data.split(":");
     state.history.push(state.step);
     state[step] = value;
 
-    // VALIDASI AKUN → MATA UANG
     if (step === "akun") {
       const { saldo, mataUang } = getLastFromCache(state.rows, value);
-
       state.saldoSebelum = saldo;
 
-      if (mataUang) {
-        state.mataUang = mataUang;
-        state.step = "metode";
-      } else {
-        state.step = "mataUang";
-      }
+      state.step = mataUang ? "metode" : "mataUang";
+      if (mataUang) state.mataUang = mataUang;
 
       return this.render(ctx, state);
     }
@@ -243,28 +223,25 @@ Tag: ${state.tag}
     if (!state) return;
 
     await ctx.deleteMessage().catch(() => {});
-    const text = ctx.message.text;
     state.history.push(state.step);
 
     if (state.step === "deskripsi") {
-      state.deskripsi = text;
+      state.deskripsi = ctx.message.text;
       state.step = "jumlah";
     } else if (state.step === "jumlah") {
-      state.jumlah = toNumber(text);
+      state.jumlah = toNumber(ctx.message.text);
       state.step = "akun";
     } else if (state.step === "tag") {
-      state.tag = text;
+      state.tag = ctx.message.text;
       state.step = "catatan";
     } else if (state.step === "catatan") {
-      state.catatan = text;
+      state.catatan = ctx.message.text;
       state.step = "confirm";
 
-      const saldoSesudah =
+      state.saldoSesudah =
         state.jenis === "Pemasukan"
           ? state.saldoSebelum + state.jumlah
           : state.saldoSebelum - state.jumlah;
-
-      state.saldoSesudah = saldoSesudah;
     }
 
     return this.render(ctx, state);
@@ -278,14 +255,15 @@ Tag: ${state.tag}
 
     switch (state.step) {
       case "jenis":
-        return edit("Pilih jenis transaksi:", kbList(OPTIONS.jenis, "addbalance:jenis"));
-
+        return edit(
+          "Pilih jenis transaksi:",
+          kbList(OPTIONS.jenis, "addbalance:jenis")
+        );
       case "kategori":
         return edit(
           "Pilih kategori:",
           kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori")
         );
-
       case "subKategori":
         return edit(
           "Pilih sub kategori:",
@@ -294,34 +272,26 @@ Tag: ${state.tag}
             "addbalance:subKategori"
           )
         );
-
       case "deskripsi":
         return edit("Masukkan deskripsi:", kbText());
-
       case "jumlah":
         return edit("Masukkan jumlah:", kbText());
-
       case "akun":
         return edit("Pilih akun:", kbList(OPTIONS.akun, "addbalance:akun"));
-
       case "mataUang":
         return edit(
-          "Pilih mata uang (akun baru):",
+          "Pilih mata uang:",
           kbList(OPTIONS.mataUang, "addbalance:mataUang")
         );
-
       case "metode":
         return edit(
           "Pilih metode:",
           kbList(OPTIONS.metode, "addbalance:metode")
         );
-
       case "tag":
         return edit("Masukkan tag:", kbText());
-
       case "catatan":
         return edit("Masukkan catatan:", kbText());
-
       case "confirm":
         return edit(
           `🧾 Konfirmasi Transaksi
