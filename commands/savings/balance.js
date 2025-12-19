@@ -68,17 +68,13 @@ export default {
     const akunList = rows
       .map(([akun, rawSaldo]) => {
         const saldo = Number(rawSaldo);
-        if (!akun || isNaN(saldo) || saldo === 0) return null;
+        if (!akun || isNaN(saldo)) return null;
 
         total += saldo;
 
         return `🏦 ${akun}\n💰 ${formatIDR(saldo)}`;
       })
       .filter(Boolean);
-
-    if (!akunList.length) {
-      return ctx.reply("⚠️ Semua akun memiliki saldo 0.");
-    }
 
     const message = `
 📊 *Saldo Per Akun*
