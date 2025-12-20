@@ -1,57 +1,58 @@
 # Personal Finance Telegram Bot
 
-Bot Telegram sederhana untuk **mencatat dan memantau keuangan pribadi**
-menggunakan **Google Sheets sebagai database utama**.
+A simple Telegram bot to **record and monitor personal finances** using **Google Sheets as the primary database**.
 
-Project ini ditujukan untuk penggunaan **pribadi**, dengan fokus pada
-kejelasan data, transparansi, dan kemudahan maintenance.
+This project is intended for **personal use**, with a focus on data clarity, transparency, and ease of maintenance.
 
 ---
 
-## ✨ Fitur Utama
+## ✨ Key Features
 
-### ✅ Pencatatan Transaksi
-- Pemasukan
-- Pengeluaran
-- Transfer antar akun
-- Kategori & sub-kategori
-- Multi akun (Wallet, Bank, E-Wallet, Binance, dll)
-- Multi mata uang (IDR & USDT)
+### ✅ Transaction Logging
 
-### 📊 Cek Saldo (`/balance`)
-- Menampilkan saldo **per akun**
-- Mendukung **IDR & USDT**
-- Total saldo **dipisah per mata uang**
-- Aman jika data masih kosong (`#N/A` otomatis dianggap 0)
-- Timestamp menggunakan **WIB (Asia/Jakarta)**
+* Income
+* Expense
+* Account-to-account transfer
+* Categories & sub-categories
+* Multiple accounts (Wallet, Bank, E-Wallet, Binance, etc.)
+* Multiple currencies (IDR & USDT)
 
----
+### 📊 Balance Check (`/balance`)
 
-## 🧱 Struktur Data (Google Sheets)
-
-### Sheet Transaksi (`Sheet1`)
-
-| Kolom | Keterangan |
-|-----|-----------|
-| F | Mata Uang (`IDR` / `USDT`) |
-| G | Akun |
-| J | Saldo setelah transaksi |
-
-### Sheet Ringkasan Akun
-
-| Kolom | Isi |
-|-----|----|
-| S | Nama Akun |
-| T | Saldo Terakhir |
-| U | Mata Uang Akun |
-
-> Saldo dan mata uang diambil dari **transaksi terakhir** tiap akun.
+* Displays balance **per account**
+* Supports **IDR & USDT**
+* Total balance **separated by currency**
+* Safe for empty data (`#N/A` is automatically treated as 0)
+* Timestamp uses **WIB (Asia/Jakarta)**
 
 ---
 
-## 🔁 Rumus Google Sheets
+## 🧱 Data Structure (Google Sheets)
 
-### Saldo Terakhir Akun
+### Transactions Sheet (`Sheet1`)
+
+| Column | Description               |
+| ------ | ------------------------- |
+| F      | Currency (`IDR` / `USDT`) |
+| G      | Account                   |
+| J      | Balance after transaction |
+
+### Account Summary Sheet
+
+| Column | Content          |
+| ------ | ---------------- |
+| S      | Account Name     |
+| T      | Latest Balance   |
+| U      | Account Currency |
+
+> Balance and currency are derived from the **latest transaction** of each account.
+
+---
+
+## 🔁 Google Sheets Formulas
+
+### Latest Account Balance
+
 ```excel
 =IFERROR(
   INDEX(
@@ -67,7 +68,8 @@ kejelasan data, transparansi, dan kemudahan maintenance.
 )
 ```
 
-### Mata Uang Akun
+### Account Currency
+
 ```excel
 =IFERROR(
   INDEX(
@@ -96,18 +98,18 @@ SPREADSHEET_ID=
 
 ---
 
-## 📌 Catatan Desain
+## 📌 Design Notes
 
-- Satu akun hanya menggunakan satu mata uang
-- USDT tidak dikonversi otomatis ke IDR
-- Google Sheets adalah sumber data utama
-- Bot hanya membaca dan menampilkan data
+* Each account uses **only one currency**
+* USDT is **not automatically converted** to IDR
+* Google Sheets acts as the **single source of truth**
+* The bot only **reads and displays** data
 
 ---
 
-## 🚀 Pengembangan Selanjutnya
+## 🚀 Future Improvements
 
-- `/last` → transaksi terakhir
-- `/history` → riwayat singkat
-- `/summary` → ringkasan bulanan
-- Highlight saldo minus
+* `/last` → last transaction
+* `/history` → short transaction history
+* `/summary` → monthly summary
+* Highlight negative balances
