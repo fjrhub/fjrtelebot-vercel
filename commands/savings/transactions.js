@@ -84,21 +84,18 @@ export default {
       ] = r;
 
       const isIncome = jenis === "Pemasukan";
-      const icon = isIncome ? "🔺" : "🔻";
-      const moneyIcon = isIncome ? "💰" : "💸";
-      const saldoIcon = isIncome ? "📈" : "📉";
+      const headerIcon = isIncome ? "🔺" : "🔻";
 
       text +=
-        `${icon} *${jenis}* | ${akun} | ${metode}\n` +
-        `${kategori} › ${subKategori} | ${deskripsi}\n` +
-        `${moneyIcon} ${formatNumber(jumlah)} ${mataUang} | ` +
-        `${saldoIcon} ${formatNumber(saldoSebelum)} → ${formatNumber(
-          saldoSesudah
-        )}\n` +
-        `🏷 ${tag || "-"} | 📝 ${catatan || "-"}\n` +
+        `${headerIcon}${jenis} | ${akun} | ${metode}\n` +
+        `${kategori} › ${subKategori}\n` +
+        `${deskripsi} | ${catatan || "-"}\n` +
+        `${formatNumber(jumlah)} ${mataUang} | ${formatNumber(
+          saldoSebelum
+        )} → ${formatNumber(saldoSesudah)}\n` +
+        `🏷 ${tag || "-"}\n` +
         `🕒 ${formatDate(dibuatPada)}\n\n`;
     }
-
     return ctx.reply(text, {
       parse_mode: "Markdown",
       disable_web_page_preview: true,
