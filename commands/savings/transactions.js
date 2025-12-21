@@ -1,6 +1,12 @@
 import { google } from "googleapis";
 
 /* =========================
+   CONFIG
+========================= */
+const LIMIT = 30;
+const states = new Map();
+
+/* =========================
    GOOGLE SHEETS
 ========================= */
 function sheetsClient() {
@@ -15,6 +21,17 @@ function sheetsClient() {
   });
 
   return google.sheets({ version: "v4", auth });
+}
+
+async function fetchTransactions() {
+  const sheets = sheetsClient();
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: "Sheet1!A2:N",
+  });
+
+  return res.data.values || [];
 }
 
 /* =========================
@@ -35,17 +52,78 @@ const formatDate = (iso) => {
 };
 
 /* =========================
-   FETCH TRANSACTIONS
+   PAGINATION UI
 ========================= */
-async function fetchTransactions() {
-  const sheets = sheetsClient();
+function paginationKeyboard(page, total) {
+  const buttons = [];
 
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!A2:N",
-  });
+  if (page > 0) {
+    buttons.push({
+      text: "⬅️ Sebelumnya",
+      callback_data: "transactions:prev",
+    });
+  }
 
-  return res.data.values || [];
+  if ((page + 1) * LIMIT < total) {
+    buttons.push({
+      text: "➡️ Selanjutnya",
+      callback_data: "transactions:next",
+    });
+  }
+
+  return {
+    inline_keyboard: buttons.length ? [buttons] : [],
+  };
+}
+
+/* =========================
+   RENDER PAGE
+========================= */
+function renderPage(state) {
+  const start = state.page * LIMIT;
+  const end = start + LIMIT;
+
+  const pageRows = state.rows.slice(start, end);
+
+  let text = `📒 Transaksi ${start + 1}-${Math.min(
+    end,
+    state.rows.length
+  )} dari ${state.rows.length}\n\n`;
+
+  for (const r of pageRows) {
+    const [
+      jenis,
+      kategori,
+      subKategori,
+      deskripsi,
+      jumlah,
+      mataUang,
+      akun,
+      metode,
+      saldoSebelum,
+      saldoSesudah,
+      tag,
+      catatan,
+      dibuatPada,
+    ] = r;
+
+    const headerIcon = jenis === "Pemasukan" ? "🔺" : "🔻";
+
+    text +=
+      `${headerIcon}${jenis} | ${akun} | ${metode}\n` +
+      `${kategori} › ${subKategori}\n` +
+      `${deskripsi} | ${catatan || "-"}\n` +
+      `${formatNumber(jumlah)} ${mataUang} | ${formatNumber(
+        saldoSebelum
+      )} → ${formatNumber(saldoSesudah)}\n` +
+      `🏷 ${tag || "-"}\n` +
+      `🕒 ${formatDate(dibuatPada)}\n\n`;
+  }
+
+  return {
+    text,
+    reply_markup: paginationKeyboard(state.page, state.rows.length),
+  };
 }
 
 /* =========================
@@ -61,44 +139,54 @@ export default {
       return ctx.reply("📭 Belum ada transaksi.");
     }
 
-    const LIMIT = 5;
-    const latest = rows.slice(-LIMIT).reverse();
+    // Urutkan terbaru di atas
+    rows.reverse();
 
-    let text = `📒 *${LIMIT} Transaksi Terakhir*\n\n`;
+    const msg = await ctx.reply("⏳ Memuat transaksi...");
 
-    for (const r of latest) {
-      const [
-        jenis,
-        kategori,
-        subKategori,
-        deskripsi,
-        jumlah,
-        mataUang,
-        akun,
-        metode,
-        saldoSebelum,
-        saldoSesudah,
-        tag,
-        catatan,
-        dibuatPada,
-      ] = r;
-
-      const isIncome = jenis === "Pemasukan";
-      const headerIcon = isIncome ? "🔺" : "🔻";
-
-      text +=
-        `${headerIcon}${jenis} | ${akun} | ${metode}\n` +
-        `${kategori} › ${subKategori}\n` +
-        `${deskripsi} | ${catatan || "-"}\n` +
-        `${formatNumber(jumlah)} ${mataUang} | ${formatNumber(
-          saldoSebelum
-        )} → ${formatNumber(saldoSesudah)}\n` +
-        `🏷 ${tag || "-"}\n` +
-        `🕒 ${formatDate(dibuatPada)}\n\n`;
-    }
-    return ctx.reply(text, {
-      parse_mode: "Markdown",
-      disable_web_page_preview: true,
+    states.set(ctx.from.id, {
+      page: 0,
+      rows,
+      chatId: ctx.chat.id,
+      messageId: msg.message_id,
     });
+
+    const state = states.get(ctx.from.id);
+    const view = renderPage(state);
+
+    return ctx.api.editMessageText(
+      state.chatId,
+      state.messageId,
+      view.text,
+      {
+        reply_markup: view.reply_markup,
+      }
+    );
+  },
+
+  async handleCallback(ctx) {
+    const state = states.get(ctx.from.id);
+    if (!state) return;
+
+    const action = ctx.callbackQuery.data;
+
+    if (action === "transactions:next") {
+      state.page++;
+    }
+
+    if (action === "transactions:prev") {
+      state.page--;
+    }
+
+    const view = renderPage(state);
+
+    return ctx.api.editMessageText(
+      state.chatId,
+      state.messageId,
+      view.text,
+      {
+        reply_markup: view.reply_markup,
+      }
+    );
   },
 };
