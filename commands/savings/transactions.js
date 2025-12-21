@@ -98,6 +98,7 @@ export default {
           saldoSesudah
         )}\n` +
         `🏷 ${tag || "-"}\n` +
+        `📝 ${catatan || "-"}\n` +
         `🕒 ${formatDate(dibuatPada)}\n\n`;
     }
 
