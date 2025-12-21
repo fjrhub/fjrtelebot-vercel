@@ -89,16 +89,13 @@ export default {
       const saldoIcon = isIncome ? "📈" : "📉";
 
       text +=
-        `${icon} *${jenis}*\n` +
-        `${kategori} › ${subKategori}\n` +
-        `${deskripsi}\n` +
-        `💳 ${akun} | ${metode}\n` +
-        `${moneyIcon} ${formatNumber(jumlah)} ${mataUang}\n` +
+        `${icon} *${jenis}* | ${akun} | ${metode}\n` +
+        `${kategori} › ${subKategori} | ${deskripsi}\n` +
+        `${moneyIcon} ${formatNumber(jumlah)} ${mataUang} | ` +
         `${saldoIcon} ${formatNumber(saldoSebelum)} → ${formatNumber(
           saldoSesudah
         )}\n` +
-        `🏷 ${tag || "-"}\n` +
-        `📝 ${catatan || "-"}\n` +
+        `🏷 ${tag || "-"} | 📝 ${catatan || "-"}\n` +
         `🕒 ${formatDate(dibuatPada)}\n\n`;
     }
 
