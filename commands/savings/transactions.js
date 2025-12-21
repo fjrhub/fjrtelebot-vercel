@@ -23,8 +23,16 @@ function sheetsClient() {
 const formatNumber = (n) =>
   new Intl.NumberFormat("id-ID").format(Number(n) || 0);
 
-const shortDate = (iso) =>
-  iso ? new Date(iso).toLocaleString("id-ID") : "-";
+const formatDate = (iso) => {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 /* =========================
    FETCH TRANSACTIONS
@@ -62,7 +70,7 @@ export default {
       const [
         jenis,
         kategori,
-        sub,
+        subKategori,
         deskripsi,
         jumlah,
         mataUang,
@@ -72,18 +80,30 @@ export default {
         saldoSesudah,
         tag,
         catatan,
-        dibuat,
+        dibuatPada,
       ] = r;
 
+      const isIncome = jenis === "Pemasukan";
+      const icon = isIncome ? "🔺" : "🔻";
+      const moneyIcon = isIncome ? "💰" : "💸";
+      const saldoIcon = isIncome ? "📈" : "📉";
+
       text +=
-        `• *${jenis}* — ${akun}\n` +
-        `  ${kategori} / ${sub}\n` +
-        `  ${deskripsi}\n` +
-        `  ${formatNumber(jumlah)} ${mataUang}\n` +
-        `  Saldo: ${formatNumber(saldoSebelum)} → ${formatNumber(saldoSesudah)}\n` +
-        `  ${tag || "-"} | ${shortDate(dibuat)}\n\n`;
+        `${icon} *${jenis}*\n` +
+        `${kategori} › ${subKategori}\n` +
+        `${deskripsi}\n` +
+        `💳 ${akun} | ${metode}\n` +
+        `${moneyIcon} ${formatNumber(jumlah)} ${mataUang}\n` +
+        `${saldoIcon} ${formatNumber(saldoSebelum)} → ${formatNumber(
+          saldoSesudah
+        )}\n` +
+        `🏷 ${tag || "-"}\n` +
+        `🕒 ${formatDate(dibuatPada)}\n\n`;
     }
 
-    return ctx.reply(text, { parse_mode: "Markdown" });
+    return ctx.reply(text, {
+      parse_mode: "Markdown",
+      disable_web_page_preview: true,
+    });
   },
 };
