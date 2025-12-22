@@ -114,7 +114,7 @@ function renderPage(state) {
       `${nomor}. ${headerIcon} ${jenis} | ${akun} | ${metode}\n` +
       `${kategori} › ${subKategori}\n` +
       `${deskripsi} | ${catatan || "-"}\n` +
-      `${formatNumber(jumlah)} ${mataUang} | ${formatNumber(
+      `${mataUang}${formatNumber(jumlah)} | ${formatNumber(
         saldoSebelum
       )} → ${formatNumber(saldoSesudah)}\n` +
       `🏷 ${tag || "-"}\n` +
