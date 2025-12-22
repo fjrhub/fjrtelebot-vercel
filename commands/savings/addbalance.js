@@ -40,7 +40,7 @@ const OPTIONS = {
 
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo"],
   metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
-  mataUang: ["IDR", "USDT"],
+  mataUang: ["Rp", "USDT"],
 };
 
 /* =========================
