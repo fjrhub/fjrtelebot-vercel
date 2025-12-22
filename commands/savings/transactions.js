@@ -140,30 +140,26 @@ export default {
       return ctx.reply("📭 Belum ada transaksi.");
     }
 
-    // ⬇️ URUTAN: PALING LAMA → PALING BARU
-    // (sesuai urutan di spreadsheet)
+    // Urutan: paling lama → paling baru
     const orderedRows = rows;
 
-    const msg = await ctx.reply(" "); // placeholder kosong agar bisa edit
-
-    states.set(ctx.from.id, {
+    const state = {
       page: 0,
       rows: orderedRows,
+    };
+
+    const view = renderPage(state);
+
+    const msg = await ctx.reply(view.text, {
+      reply_markup: view.reply_markup,
+    });
+
+    // simpan state SETELAH message berhasil dikirim
+    states.set(ctx.from.id, {
+      ...state,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
     });
-
-    const state = states.get(ctx.from.id);
-    const view = renderPage(state);
-
-    return ctx.api.editMessageText(
-      state.chatId,
-      state.messageId,
-      view.text,
-      {
-        reply_markup: view.reply_markup,
-      }
-    );
   },
 
   async handleCallback(ctx) {
@@ -182,13 +178,8 @@ export default {
 
     const view = renderPage(state);
 
-    return ctx.api.editMessageText(
-      state.chatId,
-      state.messageId,
-      view.text,
-      {
-        reply_markup: view.reply_markup,
-      }
-    );
+    return ctx.api.editMessageText(state.chatId, state.messageId, view.text, {
+      reply_markup: view.reply_markup,
+    });
   },
 };
