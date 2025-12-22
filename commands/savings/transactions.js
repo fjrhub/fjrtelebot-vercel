@@ -107,11 +107,11 @@ function renderPage(state) {
       dibuatPada,
     ] = r;
 
-    const headerIcon = jenis === "Pemasukan" ? "🔺" : "🔻";
+    const headerIcon = jenis === "Pemasukan" ? "🟢​" : "🔴​";
     const nomor = start + i + 1; // nomor global
 
     text +=
-      `${nomor}. ${headerIcon}${jenis} | ${akun} | ${metode}\n` +
+      `${nomor}. ${headerIcon} ${jenis} | ${akun} | ${metode}\n` +
       `${kategori} › ${subKategori}\n` +
       `${deskripsi} | ${catatan || "-"}\n` +
       `${formatNumber(jumlah)} ${mataUang} | ${formatNumber(
