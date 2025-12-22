@@ -90,7 +90,7 @@ function renderPage(state) {
     state.rows.length
   )} dari ${state.rows.length}\n\n`;
 
-  for (const r of pageRows) {
+  pageRows.forEach((r, i) => {
     const [
       jenis,
       kategori,
@@ -108,9 +108,10 @@ function renderPage(state) {
     ] = r;
 
     const headerIcon = jenis === "Pemasukan" ? "🔺" : "🔻";
+    const nomor = start + i + 1; // nomor global
 
     text +=
-      `${headerIcon}${jenis} | ${akun} | ${metode}\n` +
+      `${nomor}. ${headerIcon}${jenis} | ${akun} | ${metode}\n` +
       `${kategori} › ${subKategori}\n` +
       `${deskripsi} | ${catatan || "-"}\n` +
       `${formatNumber(jumlah)} ${mataUang} | ${formatNumber(
@@ -118,7 +119,7 @@ function renderPage(state) {
       )} → ${formatNumber(saldoSesudah)}\n` +
       `🏷 ${tag || "-"}\n` +
       `🕒 ${formatDate(dibuatPada)}\n\n`;
-  }
+  });
 
   return {
     text,
@@ -139,14 +140,15 @@ export default {
       return ctx.reply("📭 Belum ada transaksi.");
     }
 
-    // Urutkan terbaru di atas
-    rows.reverse();
+    // ⬇️ URUTAN: PALING LAMA → PALING BARU
+    // (sesuai urutan di spreadsheet)
+    const orderedRows = rows;
 
-    const msg = await ctx.reply("⏳ Memuat transaksi...");
+    const msg = await ctx.reply(" "); // placeholder kosong agar bisa edit
 
     states.set(ctx.from.id, {
       page: 0,
-      rows,
+      rows: orderedRows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
     });
