@@ -34,9 +34,9 @@ async function formatSheetData() {
 
     const output = rows
       .map((row) => {
-        const nama = row[2] || "-";
-        const perdus = row[4] || "0";
-        const satuanValue = toNumber(row[6]);
+        const nama = row[1] || "-";
+        const perdus = row[3] || "0";
+        const satuanValue = toNumber(row[5]);
 
         return `${nama}
 PER DUS : ${perdus}K
