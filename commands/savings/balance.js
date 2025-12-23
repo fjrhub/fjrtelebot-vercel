@@ -20,11 +20,9 @@ function sheetsClient() {
 /* =========================
    UTIL
 ========================= */
-const formatRp = (n) =>
-  "Rp" + Math.round(n).toLocaleString("id-ID");
+const formatRp = (n) => "Rp" + Math.round(n).toLocaleString("id-ID");
 
-const formatUSDT = (n) =>
-  Number(n).toFixed(2) + " USDT";
+const formatUSDT = (n) => Number(n).toFixed(2) + " USDT";
 
 function getJakartaTime() {
   const now = new Date(
