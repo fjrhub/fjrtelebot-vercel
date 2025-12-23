@@ -49,18 +49,18 @@ export default {
       state.step = "confirm";
 
       return ctx.reply(
-        `Konfirmasi data:\n\n` +
-        `Nama barang : ${state.namaBarang}\n` +
-        `Jumlah      : ${state.jumlah}\n` +
-        `Total harga : ${state.totalHarga}\n` +
-        `Isi dus     : ${state.isiDus}\n\n` +
-        `Lanjutkan?`,
+        `🧾 Konfirmasi Data\n\n` +
+          `📦 Nama Barang: ${state.namaBarang}\n` +
+          `📊 Jumlah: ${state.jumlah}\n` +
+          `💰 Total Harga: ${state.totalHarga}\n` +
+          `📦 Isi Dus: ${state.isiDus}\n\n` +
+          `Lanjutkan?`,
         {
           reply_markup: {
             inline_keyboard: [
               [
-                { text: "Konfirmasi", callback_data: "addprice:yes" },
-                { text: "Batal", callback_data: "addprice:no" },
+                { text: "✅ Konfirmasi", callback_data: "addprice:yes" },
+                { text: "❌ Batal", callback_data: "addprice:no" },
               ],
             ],
           },
@@ -100,24 +100,23 @@ export default {
           range: "Sheet5!A:F",
           valueInputOption: "USER_ENTERED",
           requestBody: {
-            values: [[
-              state.jumlah,
-              state.namaBarang,
-              state.totalHarga,
-              "",
-              state.isiDus,
-              ""
-            ]],
+            values: [
+              [
+                state.jumlah,
+                state.namaBarang,
+                state.totalHarga,
+                "",
+                state.isiDus,
+                "",
+              ],
+            ],
           },
         });
 
         userState.delete(userId);
         await ctx.answerCallbackQuery();
 
-        return ctx.editMessageText(
-          "Data berhasil ditambahkan"
-        );
-
+        return ctx.editMessageText("Data berhasil ditambahkan");
       } catch (err) {
         userState.delete(userId);
         await ctx.answerCallbackQuery();
