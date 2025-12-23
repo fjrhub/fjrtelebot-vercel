@@ -20,7 +20,7 @@ function sheetsClient() {
 /* =========================
    UTIL
 ========================= */
-const formatIDR = (n) =>
+const formatRp = (n) =>
   "Rp" + Math.round(n).toLocaleString("id-ID");
 
 const formatUSDT = (n) =>
@@ -67,7 +67,7 @@ export default {
       return ctx.reply("Tidak ada data akun.");
     }
 
-    let totalIDR = 0;
+    let totalRp = 0;
     let totalUSDT = 0;
 
     const accountMessages = rows.map(([akun, rawSaldo, mataUang]) => {
@@ -76,16 +76,16 @@ export default {
       // #N/A, kosong, invalid → 0
       if (!rawSaldo || isNaN(saldo)) saldo = 0;
 
-      const currency = (mataUang || "IDR").toUpperCase();
+      const currency = (mataUang || "Rp").toUpperCase();
 
       if (currency === "USDT") {
         totalUSDT += saldo;
         return `🧾 Account : ${akun}\n💰 Balance: ${formatUSDT(saldo)}`;
       }
 
-      // default IDR
-      totalIDR += saldo;
-      return `🧾 Account : ${akun}\n💰 Balance: ${formatIDR(saldo)}`;
+      // default Rp
+      totalRp += saldo;
+      return `🧾 Account : ${akun}\n💰 Balance: ${formatRp(saldo)}`;
     });
 
     const message = `
@@ -94,7 +94,7 @@ export default {
 ${accountMessages.join("\n\n")}
 
 ━━━━━━━━━━━━
-🔢 Total IDR : ${formatIDR(totalIDR)}
+🔢 Total IDR : ${formatRp(totalRp)}
 🔢 Total USDT: ${formatUSDT(totalUSDT)}
 📅 Last updated: ${getJakartaTime()}
 `.trim();
