@@ -15,12 +15,12 @@ This project is intended for **personal use**, with a focus on data clarity, tra
 * Account-to-account transfer
 * Categories & sub-categories
 * Multiple accounts (Wallet, Bank, E-Wallet, Binance, etc.)
-* Multiple currencies (IDR & USDT)
+* Multiple currencies (**Rp & USDT**)
 
 ### 📊 Balance Check (`/balance`)
 
 * Displays balance **per account**
-* Supports **IDR & USDT**
+* Supports **Rp & USDT**
 * Total balance **separated by currency**
 * Safe for empty data (`#N/A` is automatically treated as 0)
 * Timestamp uses **WIB (Asia/Jakarta)**
@@ -31,19 +31,19 @@ This project is intended for **personal use**, with a focus on data clarity, tra
 
 ### Transactions Sheet (`Sheet1`)
 
-| Column | Description               |
-| ------ | ------------------------- |
-| F      | Currency (`IDR` / `USDT`) |
-| G      | Account                   |
-| J      | Balance after transaction |
+| Column | Description              |
+|------|--------------------------|
+| F    | Currency (`Rp` / `USDT`) |
+| G    | Account                  |
+| J    | Balance after transaction |
 
 ### Account Summary Sheet
 
 | Column | Content          |
-| ------ | ---------------- |
-| S      | Account Name     |
-| T      | Latest Balance   |
-| U      | Account Currency |
+|------|------------------|
+| S    | Account Name     |
+| T    | Latest Balance   |
+| U    | Account Currency |
 
 > Balance and currency are derived from the **latest transaction** of each account.
 
@@ -81,7 +81,7 @@ This project is intended for **personal use**, with a focus on data clarity, tra
       )
     )
   );
-  "IDR"
+  "Rp"
 )
 ```
 
@@ -101,7 +101,7 @@ SPREADSHEET_ID=
 ## 📌 Design Notes
 
 * Each account uses **only one currency**
-* USDT is **not automatically converted** to IDR
+* USDT is **not automatically converted** to Rp
 * Google Sheets acts as the **single source of truth**
 * The bot only **reads and displays** data
 
