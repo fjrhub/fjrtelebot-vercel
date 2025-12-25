@@ -9,12 +9,23 @@ const userState = new Map();
 export default {
   name: "addprice",
 
+  // ======================
+  // COMMAND /addprice
+  // ======================
   async execute(ctx) {
     const userId = ctx.from.id;
-    userState.set(userId, { step: 1 });
-    return ctx.reply("Masukkan nama barang:");
+
+    const msg = await ctx.reply("📝 Masukkan nama barang:");
+
+    userState.set(userId, {
+      step: 1,
+      botMessageId: msg.message_id,
+    });
   },
 
+  // ======================
+  // HANDLE TEXT INPUT
+  // ======================
   async handleText(ctx) {
     const userId = ctx.from.id;
     const state = userState.get(userId);
@@ -22,40 +33,87 @@ export default {
 
     const text = ctx.message.text.trim();
 
+    // hapus pesan user agar tidak spam
+    try {
+      await ctx.deleteMessage();
+    } catch {}
+
+    // STEP 1 — Nama Barang
     if (state.step === 1) {
       state.namaBarang = text;
       state.step = 2;
-      return ctx.reply("Masukkan jumlah:");
+
+      return ctx.api.editMessageText(
+        ctx.chat.id,
+        state.botMessageId,
+        "📊 Masukkan jumlah:"
+      );
     }
 
+    // STEP 2 — Jumlah
     if (state.step === 2) {
       state.jumlah = toNumber(text);
-      if (state.jumlah <= 0) return ctx.reply("Jumlah tidak valid");
+      if (state.jumlah <= 0) {
+        return ctx.api.editMessageText(
+          ctx.chat.id,
+          state.botMessageId,
+          "❌ Jumlah tidak valid\n\n📊 Masukkan jumlah:"
+        );
+      }
+
       state.step = 3;
-      return ctx.reply("Masukkan total harga:");
+      return ctx.api.editMessageText(
+        ctx.chat.id,
+        state.botMessageId,
+        "💰 Masukkan total harga:"
+      );
     }
 
+    // STEP 3 — Total Harga
     if (state.step === 3) {
       state.totalHarga = toNumber(text);
-      if (state.totalHarga <= 0) return ctx.reply("Total harga tidak valid");
+      if (state.totalHarga <= 0) {
+        return ctx.api.editMessageText(
+          ctx.chat.id,
+          state.botMessageId,
+          "❌ Total harga tidak valid\n\n💰 Masukkan total harga:"
+        );
+      }
+
       state.step = 4;
-      return ctx.reply("Masukkan isi dus:");
+      return ctx.api.editMessageText(
+        ctx.chat.id,
+        state.botMessageId,
+        "📦 Masukkan isi dus:"
+      );
     }
 
+    // STEP 4 — Isi Dus
     if (state.step === 4) {
       state.isiDus = toNumber(text);
-      if (state.isiDus <= 0) return ctx.reply("Isi dus tidak valid");
+      if (state.isiDus <= 0) {
+        return ctx.api.editMessageText(
+          ctx.chat.id,
+          state.botMessageId,
+          "❌ Isi dus tidak valid\n\n📦 Masukkan isi dus:"
+        );
+      }
 
       state.step = "confirm";
 
-      return ctx.reply(
-        `🧾 Konfirmasi Data\n\n` +
-          `📦 Nama Barang: ${state.namaBarang}\n` +
-          `📊 Jumlah: ${state.jumlah}\n` +
-          `💰 Total Harga: ${state.totalHarga}\n` +
-          `📦 Isi Dus: ${state.isiDus}\n\n` +
-          `Lanjutkan?`,
+      return ctx.api.editMessageText(
+        ctx.chat.id,
+        state.botMessageId,
+        `🧾 *Konfirmasi Data*
+
+📦 Nama Barang: ${state.namaBarang}
+📊 Jumlah: ${state.jumlah}
+💰 Total Harga: ${state.totalHarga}
+📦 Isi Dus: ${state.isiDus}
+
+Lanjutkan?`,
         {
+          parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [
               [
@@ -69,17 +127,23 @@ export default {
     }
   },
 
+  // ======================
+  // HANDLE CALLBACK
+  // ======================
   async handleCallback(ctx) {
     const userId = ctx.from.id;
     const state = userState.get(userId);
     if (!state || state.step !== "confirm") return;
 
+    await ctx.answerCallbackQuery();
+
+    // BATAL
     if (ctx.callbackQuery.data === "addprice:no") {
       userState.delete(userId);
-      await ctx.answerCallbackQuery();
-      return ctx.editMessageText("Proses dibatalkan");
+      return ctx.editMessageText("❌ Proses dibatalkan");
     }
 
+    // KONFIRMASI
     if (ctx.callbackQuery.data === "addprice:yes") {
       try {
         const auth = new google.auth.GoogleAuth({
@@ -114,13 +178,10 @@ export default {
         });
 
         userState.delete(userId);
-        await ctx.answerCallbackQuery();
-
-        return ctx.editMessageText("Data berhasil ditambahkan");
+        return ctx.editMessageText("✅ Data berhasil ditambahkan");
       } catch (err) {
         userState.delete(userId);
-        await ctx.answerCallbackQuery();
-        return ctx.editMessageText(`Error: ${err.message}`);
+        return ctx.editMessageText(`❌ Error: ${err.message}`);
       }
     }
   },
