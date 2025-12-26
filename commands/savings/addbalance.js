@@ -51,9 +51,22 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
+const toNumber = (v) =>
+  Number(String(v).replace(/\./g, "").replace(",", "."));
 
 const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
+
+/* =========================
+   KEYBOARD
+========================= */
+const kbJenisAwal = () => ({
+  inline_keyboard: [
+    ...OPTIONS.jenis.map((v) => [
+      { text: v, callback_data: `addbalance:jenis:${v}` },
+    ]),
+    [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
+  ],
+});
 
 const kbList = (list, prefix) => ({
   inline_keyboard: [
@@ -83,17 +96,15 @@ function sheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-/* 🔥 FETCH HANYA DATA YANG DIPAKAI */
 async function fetchAllRows() {
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!F2:J", // F=mataUang, G=akun, J=saldo
+    range: "Sheet1!F2:J",
   });
   return res.data.values || [];
 }
 
-/* 🔥 AMBIL DARI CACHE */
 function getLastFromCache(rows, akun) {
   for (let i = rows.length - 1; i >= 0; i--) {
     if (rows[i][1] === akun) {
@@ -144,17 +155,10 @@ export default {
   name: "addbalance",
 
   async execute(ctx) {
-    const rows = await fetchAllRows(); // ✅ 1x FETCH
+    const rows = await fetchAllRows();
 
     const msg = await ctx.reply("Pilih jenis transaksi:", {
-      reply_markup: {
-        inline_keyboard: [
-          ...OPTIONS.jenis.map((v) => [
-            { text: v, callback_data: `addbalance:jenis:${v}` },
-          ]),
-          [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
-        ],
-      },
+      reply_markup: kbJenisAwal(),
     });
 
     states.set(ctx.from.id, {
@@ -182,7 +186,7 @@ export default {
     }
 
     if (data === "addbalance:back") {
-      state.step = state.history.pop();
+      state.step = state.history.pop() || "jenis";
       return this.render(ctx, state);
     }
 
@@ -200,7 +204,7 @@ Deskripsi: ${state.deskripsi}
 Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
 Akun: ${state.akun}
 Metode: ${state.metode}
-Tag: ${state.tag || "-"}`
+Tag: ${state.tag || "-"}`,
       );
     }
 
@@ -267,15 +271,14 @@ Tag: ${state.tag || "-"}`
 
     switch (state.step) {
       case "jenis":
-        return edit(
-          "Pilih jenis transaksi:",
-          kbList(OPTIONS.jenis, "addbalance:jenis")
-        );
+        return edit("Pilih jenis transaksi:", kbJenisAwal());
+
       case "kategori":
         return edit(
           "Pilih kategori:",
           kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori")
         );
+
       case "subKategori":
         return edit(
           "Pilih sub kategori:",
@@ -284,26 +287,34 @@ Tag: ${state.tag || "-"}`
             "addbalance:subKategori"
           )
         );
+
       case "deskripsi":
         return edit("Masukkan deskripsi:", kbText());
+
       case "jumlah":
         return edit("Masukkan jumlah:", kbText());
+
       case "akun":
         return edit("Pilih akun:", kbList(OPTIONS.akun, "addbalance:akun"));
+
       case "mataUang":
         return edit(
           "Pilih mata uang:",
           kbList(OPTIONS.mataUang, "addbalance:mataUang")
         );
+
       case "metode":
         return edit(
           "Pilih metode:",
           kbList(OPTIONS.metode, "addbalance:metode")
         );
+
       case "tag":
         return edit("Masukkan tag:", kbText());
+
       case "catatan":
         return edit("Masukkan catatan:", kbText());
+
       case "confirm":
         return edit(
           `🧾 Konfirmasi Transaksi
