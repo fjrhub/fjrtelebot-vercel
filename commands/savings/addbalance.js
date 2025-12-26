@@ -4,7 +4,42 @@ import { google } from "googleapis";
    OPTIONS
 ========================= */
 const OPTIONS = {
+  jenis: ["Pemasukan", "Pengeluaran", "Transfer"],
+
+  kategori: {
+    Pengeluaran: [
+      "Makanan",
+      "Transportasi",
+      "Hiburan",
+      "Utilitas",
+      "Pendidikan",
+      "Belanja",
+    ],
+    Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
+  },
+
+  subKategori: {
+    Pengeluaran: {
+      Makanan: ["Makan Harian", "Jajan", "Kopi"],
+      Transportasi: ["Bensin", "Ojol", "Parkir", "Servis", "Darurat"],
+      Hiburan: ["Game", "Streaming"],
+      Utilitas: ["Internet", "Listrik", "Pulsa"],
+      Pendidikan: ["Kursus", "Buku"],
+      Belanja: ["Online", "Offline", "Langganan"],
+    },
+
+    Pemasukan: {
+      Gaji: ["Gaji Bulanan", "Bonus", "THR"],
+      Usaha: ["Penjualan", "Jasa", "Komisi"],
+      Investasi: ["Crypto", "Saham", "Dividen"],
+      Hadiah: ["Uang Saku", "Hadiah", "Donasi"],
+      Refund: ["Refund Belanja", "Cashback"],
+      Lainnya: ["Uang Saku", "Bantuan", "Pemasukan Lain"],
+    },
+  },
+
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo", "Gopay"],
+  metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
   mataUang: ["Rp", "USDT"],
 };
 
@@ -16,21 +51,19 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) =>
-  Number(String(v).replace(/\./g, "").replace(",", "."));
+const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
 
-const formatNumber = (n) =>
-  new Intl.NumberFormat("id-ID").format(n);
-
-const formatAmount = (amount, currency) => {
-  if (currency === "Rp") return `Rp${formatNumber(amount)}`;
-  return `${amount} ${currency}`;
-};
+const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
 
 const kbList = (list, prefix) => ({
-  inline_keyboard: list.map((v) => [
-    { text: v, callback_data: `${prefix}:${v}` },
-  ]),
+  inline_keyboard: [
+    ...list.map((v) => [{ text: v, callback_data: `${prefix}:${v}` }]),
+    [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
+  ],
+});
+
+const kbText = () => ({
+  inline_keyboard: [[{ text: "⬅️ Back", callback_data: "addbalance:back" }]],
 });
 
 /* =========================
@@ -50,39 +83,30 @@ function sheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-/* =========================
-   FETCH (ONLY REQUIRED COLS)
-========================= */
-async function fetchInitialRows() {
+/* 🔥 FETCH HANYA DATA YANG DIPAKAI */
+async function fetchAllRows() {
   const sheets = sheetsClient();
-
-  const res = await sheets.spreadsheets.values.batchGet({
+  const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    ranges: [
-      "Sheet1!A2:A", // Jenis
-      "Sheet1!G2:G", // Akun
-    ],
+    range: "Sheet1!F2:J", // F=mataUang, G=akun, J=saldo
   });
-
-  const jenisCol = res.data.valueRanges[0].values || [];
-  const akunCol = res.data.valueRanges[1].values || [];
-
-  return jenisCol.map((j, i) => ({
-    jenis: j[0],
-    akun: akunCol[i]?.[0] ?? null,
-  }));
+  return res.data.values || [];
 }
 
-function hasInitialBalance(rows, akun) {
-  return rows.some(
-    (r) => r.jenis === "Initial" && r.akun === akun
-  );
+/* 🔥 AMBIL DARI CACHE */
+function getLastFromCache(rows, akun) {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i][1] === akun) {
+      return {
+        mataUang: rows[i][0] || null,
+        saldo: Number(rows[i][4]) || 0,
+      };
+    }
+  }
+  return { saldo: 0, mataUang: null };
 }
 
-/* =========================
-   APPEND INITIAL BALANCE
-========================= */
-async function appendInitialBalance(state) {
+async function appendTransaction(data) {
   const sheets = sheetsClient();
   const now = new Date().toISOString();
 
@@ -93,18 +117,18 @@ async function appendInitialBalance(state) {
     requestBody: {
       values: [
         [
-          "Initial",            // Jenis
-          "Setup",              // Kategori
-          "Balance",            // Sub Kategori
-          "Initial balance",    // Deskripsi
-          state.jumlah,         // Jumlah
-          state.mataUang,       // Mata uang
-          state.akun,           // Akun
-          "System",             // Metode
-          0,                    // Saldo sebelum
-          state.jumlah,         // Saldo sesudah
-          "#initial",           // Tag
-          "Initial balance",    // Catatan
+          data.jenis,
+          data.kategori,
+          data.subKategori,
+          data.deskripsi,
+          data.jumlah,
+          data.mataUang,
+          data.akun,
+          data.metode,
+          data.saldoSebelum,
+          data.saldoSesudah,
+          data.tag,
+          data.catatan,
           now,
           now,
         ],
@@ -117,18 +141,25 @@ async function appendInitialBalance(state) {
    COMMAND
 ========================= */
 export default {
-  name: "setupaccount",
+  name: "addbalance",
 
   async execute(ctx) {
-    const rows = await fetchInitialRows();
+    const rows = await fetchAllRows(); // ✅ 1x FETCH
 
-    const msg = await ctx.reply(
-      "Select the account to set the initial balance:",
-      { reply_markup: kbList(OPTIONS.akun, "setupaccount:akun") }
-    );
+    const msg = await ctx.reply("Pilih jenis transaksi:", {
+      reply_markup: {
+        inline_keyboard: [
+          ...OPTIONS.jenis.map((v) => [
+            { text: v, callback_data: `addbalance:jenis:${v}` },
+          ]),
+          [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
+        ],
+      },
+    });
 
     states.set(ctx.from.id, {
-      step: "akun",
+      step: "jenis",
+      history: [],
       rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
@@ -137,66 +168,66 @@ export default {
 
   async handleCallback(ctx) {
     const state = states.get(ctx.from.id);
-    if (!state) return ctx.answerCallbackQuery();
+    if (!state) return;
 
     const data = ctx.callbackQuery.data;
     const edit = (text, kb) =>
       ctx.api.editMessageText(state.chatId, state.messageId, text, {
-        parse_mode: "Markdown",
         reply_markup: kb,
       });
 
-    /* CANCEL */
-    if (data === "setupaccount:cancel") {
+    if (data === "addbalance:cancel") {
       states.delete(ctx.from.id);
-      await ctx.answerCallbackQuery();
-      return edit("❌ Setup cancelled.");
+      return edit("❌ Proses dibatalkan.");
     }
 
-    /* SAVE */
-    if (data === "setupaccount:save") {
-      await appendInitialBalance(state);
+    if (data === "addbalance:back") {
+      state.step = state.history.pop();
+      return this.render(ctx, state);
+    }
+
+    if (data === "addbalance:save") {
+      await appendTransaction(state);
       states.delete(ctx.from.id);
-      await ctx.answerCallbackQuery();
 
       return edit(
-        `✅ *Initial balance saved*
+        `✅ Transaksi berhasil disimpan!
 
-Account: ${state.akun}
-Balance: *${formatAmount(state.jumlah, state.mataUang)}*
-Currency: ${state.mataUang}
-Method: System
-Tag: #initial`
+Jenis: ${state.jenis}
+Kategori: ${state.kategori}
+Sub: ${state.subKategori}
+Deskripsi: ${state.deskripsi}
+Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
+Akun: ${state.akun}
+Metode: ${state.metode}
+Tag: ${state.tag || "-"}`
       );
     }
 
     const [, step, value] = data.split(":");
+    state.history.push(state.step);
     state[step] = value;
 
-    /* STEP: ACCOUNT */
     if (step === "akun") {
-      if (hasInitialBalance(state.rows, value)) {
-        return ctx.answerCallbackQuery({
-          text: "This account already has an initial balance.",
-          show_alert: true,
-        });
-      }
+      const { saldo, mataUang } = getLastFromCache(state.rows, value);
+      state.saldoSebelum = saldo;
 
-      state.step = "jumlah";
-      await ctx.answerCallbackQuery();
+      state.step = mataUang ? "metode" : "mataUang";
+      if (mataUang) state.mataUang = mataUang;
 
-      return edit(
-        `Enter the *initial balance* for *${value}*:`,
-        { inline_keyboard: [] }
-      );
-    }
-
-    /* STEP: CURRENCY */
-    if (step === "mataUang") {
-      state.step = "confirm";
-      await ctx.answerCallbackQuery();
       return this.render(ctx, state);
     }
+
+    const flow = {
+      jenis: "kategori",
+      kategori: "subKategori",
+      subKategori: "deskripsi",
+      mataUang: "metode",
+      metode: "tag",
+    };
+
+    state.step = flow[step];
+    return this.render(ctx, state);
   },
 
   async handleText(ctx) {
@@ -204,43 +235,97 @@ Tag: #initial`
     if (!state) return;
 
     await ctx.deleteMessage().catch(() => {});
+    state.history.push(state.step);
 
-    if (state.step === "jumlah") {
+    if (state.step === "deskripsi") {
+      state.deskripsi = ctx.message.text;
+      state.step = "jumlah";
+    } else if (state.step === "jumlah") {
       state.jumlah = toNumber(ctx.message.text);
-      state.step = "mataUang";
+      state.step = "akun";
+    } else if (state.step === "tag") {
+      state.tag = ctx.message.text;
+      state.step = "catatan";
+    } else if (state.step === "catatan") {
+      state.catatan = ctx.message.text;
+      state.step = "confirm";
 
-      return ctx.api.editMessageText(
-        state.chatId,
-        state.messageId,
-        "Select currency:",
-        { reply_markup: kbList(OPTIONS.mataUang, "setupaccount:mataUang") }
-      );
+      state.saldoSesudah =
+        state.jenis === "Pemasukan"
+          ? state.saldoSebelum + state.jumlah
+          : state.saldoSebelum - state.jumlah;
     }
+
+    return this.render(ctx, state);
   },
 
   async render(ctx, state) {
     const edit = (text, kb) =>
       ctx.api.editMessageText(state.chatId, state.messageId, text, {
-        parse_mode: "Markdown",
         reply_markup: kb,
       });
 
-    if (state.step === "confirm") {
-      return edit(
-        `🧾 *Confirm Initial Balance*
+    switch (state.step) {
+      case "jenis":
+        return edit(
+          "Pilih jenis transaksi:",
+          kbList(OPTIONS.jenis, "addbalance:jenis")
+        );
+      case "kategori":
+        return edit(
+          "Pilih kategori:",
+          kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori")
+        );
+      case "subKategori":
+        return edit(
+          "Pilih sub kategori:",
+          kbList(
+            OPTIONS.subKategori[state.jenis][state.kategori],
+            "addbalance:subKategori"
+          )
+        );
+      case "deskripsi":
+        return edit("Masukkan deskripsi:", kbText());
+      case "jumlah":
+        return edit("Masukkan jumlah:", kbText());
+      case "akun":
+        return edit("Pilih akun:", kbList(OPTIONS.akun, "addbalance:akun"));
+      case "mataUang":
+        return edit(
+          "Pilih mata uang:",
+          kbList(OPTIONS.mataUang, "addbalance:mataUang")
+        );
+      case "metode":
+        return edit(
+          "Pilih metode:",
+          kbList(OPTIONS.metode, "addbalance:metode")
+        );
+      case "tag":
+        return edit("Masukkan tag:", kbText());
+      case "catatan":
+        return edit("Masukkan catatan:", kbText());
+      case "confirm":
+        return edit(
+          `🧾 Konfirmasi Transaksi
 
-Account     : ${state.akun}
-Balance     : *${formatAmount(state.jumlah, state.mataUang)}*
-Currency    : ${state.mataUang}
+Jenis: ${state.jenis}
+Kategori: ${state.kategori}
+Sub: ${state.subKategori}
+Deskripsi: ${state.deskripsi}
+Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
+Akun: ${state.akun}
+Metode: ${state.metode}
+Tag: ${state.tag}
 
-Continue?`,
-        {
-          inline_keyboard: [
-            [{ text: "✅ Save", callback_data: "setupaccount:save" }],
-            [{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }],
-          ],
-        }
-      );
+Lanjutkan?`,
+          {
+            inline_keyboard: [
+              [{ text: "✅ Simpan", callback_data: "addbalance:save" }],
+              [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
+              [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
+            ],
+          }
+        );
     }
   },
 };
