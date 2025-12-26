@@ -48,9 +48,7 @@ async function fetchAllRows() {
 }
 
 function hasOpeningBalance(rows, akun) {
-  return rows.some(
-    (r) => r.jenis === "Opening Balance" && r.akun === akun
-  );
+  return rows.some((r) => r.jenis === "Opening Balance" && r.akun === akun);
 }
 
 /* =========================
@@ -65,22 +63,24 @@ async function appendOpeningBalance(data) {
     range: "Sheet1!A:O",
     valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [[
-        "Opening Balance",
-        "Account Setup",
-        "Initial Balance",
-        "Saldo awal akun",
-        data.jumlah,
-        data.mataUang,
-        data.akun,
-        "-",
-        0,
-        data.jumlah,
-        "#opening",
-        "-",
-        now,
-        now,
-      ]],
+      values: [
+        [
+          "Initial",
+          "Setup",
+          "Balance",
+          "Initial balance",
+          data.jumlah,
+          data.mataUang,
+          data.akun,
+          "System",
+          0,
+          data.jumlah,
+          "#initial",
+          "Initial balance",
+          now,
+          now,
+        ],
+      ],
     },
   });
 }
