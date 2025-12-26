@@ -14,18 +14,6 @@ const OPTIONS = {
 const states = new Map();
 
 /* =========================
-   UTIL
-========================= */
-const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
-const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
-
-const kbList = (list, prefix) => ({
-  inline_keyboard: list.map((v) => [
-    { text: v, callback_data: `${prefix}:${v}` },
-  ]),
-});
-
-/* =========================
    GOOGLE SHEETS
 ========================= */
 function sheetsClient() {
@@ -42,22 +30,33 @@ function sheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
+/* =========================
+   FETCH DATA
+========================= */
 async function fetchAllRows() {
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!A2:J", // ambil kolom penting saja
+    range: "Sheet1!A2:J",
   });
-  return res.data.values || [];
+
+  const rows = res.data.values || [];
+  return rows.map((r) => ({
+    jenis: r[0],
+    akun: r[6],
+  }));
 }
 
 function hasOpeningBalance(rows, akun) {
   return rows.some(
-    (r) => r[0] === "Opening Balance" && r[6] === akun
+    (r) => r.jenis === "Opening Balance" && r.akun === akun
   );
 }
 
-async function appendTransaction(data) {
+/* =========================
+   APPEND DATA
+========================= */
+async function appendOpeningBalance(data) {
   const sheets = sheetsClient();
   const now = new Date().toISOString();
 
@@ -66,27 +65,35 @@ async function appendTransaction(data) {
     range: "Sheet1!A:O",
     valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [
-        [
-          data.jenis,
-          data.kategori,
-          data.subKategori,
-          data.deskripsi,
-          data.jumlah,
-          data.mataUang,
-          data.akun,
-          "-", // metode tidak dipakai
-          0, // saldo sebelum
-          data.saldoSesudah,
-          "-", // tag
-          "Account opening balance",
-          now,
-          now,
-        ],
-      ],
+      values: [[
+        "Opening Balance",
+        "Account Setup",
+        "Initial Balance",
+        "Saldo awal akun",
+        data.jumlah,
+        data.mataUang,
+        data.akun,
+        "-",
+        0,
+        data.jumlah,
+        "#opening",
+        "-",
+        now,
+        now,
+      ]],
     },
   });
 }
+
+/* =========================
+   KEYBOARD
+========================= */
+const kbList = (list, prefix) => ({
+  inline_keyboard: [
+    ...list.map((v) => [{ text: v, callback_data: `${prefix}:${v}` }]),
+    [{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }],
+  ],
+});
 
 /* =========================
    COMMAND
@@ -98,16 +105,10 @@ export default {
     const rows = await fetchAllRows();
 
     const msg = await ctx.reply(
-      "🛠 Setup Account\n\nPilih akun yang ingin diset saldo awal:",
+      "🛠 *Setup Account*\n\nPilih akun untuk mengisi saldo awal:",
       {
-        reply_markup: {
-          inline_keyboard: [
-            ...OPTIONS.akun.map((v) => [
-              { text: v, callback_data: `setupaccount:akun:${v}` },
-            ]),
-            [{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }],
-          ],
-        },
+        parse_mode: "Markdown",
+        reply_markup: kbList(OPTIONS.akun, "setupaccount:akun"),
       }
     );
 
@@ -116,6 +117,9 @@ export default {
       rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
+      akun: null,
+      jumlah: null,
+      mataUang: null,
     });
   },
 
@@ -124,111 +128,84 @@ export default {
     if (!state) return;
 
     const data = ctx.callbackQuery.data;
-    const edit = (text, kb) =>
+    const edit = (text, kb = null) =>
       ctx.api.editMessageText(state.chatId, state.messageId, text, {
+        parse_mode: "Markdown",
         reply_markup: kb,
       });
 
     if (data === "setupaccount:cancel") {
       states.delete(ctx.from.id);
+      await ctx.answerCallbackQuery();
       return edit("❌ Setup akun dibatalkan.");
     }
 
+    if (data === "setupaccount:save") {
+      await appendOpeningBalance(state);
+      states.delete(ctx.from.id);
+      await ctx.answerCallbackQuery();
+
+      return edit("✅ *Saldo awal berhasil disimpan!*");
+    }
+
     const [, step, value] = data.split(":");
-    state[step] = value;
 
     if (step === "akun") {
       if (hasOpeningBalance(state.rows, value)) {
         return ctx.answerCallbackQuery({
-          text: "Saldo awal akun ini sudah pernah diset.",
+          text: "Akun ini sudah memiliki saldo awal.",
           show_alert: true,
         });
       }
+
+      state.akun = value;
       state.step = "jumlah";
+      await ctx.answerCallbackQuery();
+
       return edit(
-        `Masukkan saldo awal untuk akun *${value}*:`,
-        { inline_keyboard: [] }
+        `Masukkan *saldo awal* untuk akun *${value}*:\n\nContoh: 100000`
       );
     }
 
     if (step === "mataUang") {
       state.mataUang = value;
       state.step = "confirm";
+      await ctx.answerCallbackQuery();
 
-      return this.render(ctx, state);
-    }
-  },
+      return edit(
+        `🔎 *Konfirmasi*\n
+Akun       : *${state.akun}*
+Saldo Awal : *${state.jumlah} ${state.mataUang}*
 
-  async handleText(ctx) {
-    const state = states.get(ctx.from.id);
-    if (!state) return;
-
-    await ctx.deleteMessage().catch(() => {});
-
-    if (state.step === "jumlah") {
-      state.jumlah = toNumber(ctx.message.text);
-      state.saldoSesudah = state.jumlah;
-      state.step = "mataUang";
-
-      return ctx.api.editMessageText(
-        state.chatId,
-        state.messageId,
-        "Pilih mata uang:",
+Lanjutkan?`,
         {
-          reply_markup: kbList(
-            OPTIONS.mataUang,
-            "setupaccount:mataUang"
-          ),
+          inline_keyboard: [
+            [{ text: "✅ Simpan", callback_data: "setupaccount:save" }],
+            [{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }],
+          ],
         }
       );
     }
   },
 
-  async render(ctx, state) {
-    return ctx.api.editMessageText(
-      state.chatId,
-      state.messageId,
-      `🧾 Konfirmasi Setup Akun
-
-Akun: ${state.akun}
-Saldo Awal: ${formatNumber(state.jumlah)} ${state.mataUang}
-
-Saldo ini akan menjadi titik awal akun.
-Tidak dihitung sebagai pemasukan.
-
-Lanjutkan?`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "✅ Simpan", callback_data: "setupaccount:save" }],
-            [{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }],
-          ],
-        },
-      }
-    );
-  },
-
-  async handleSave(ctx) {
+  async handleText(ctx) {
     const state = states.get(ctx.from.id);
-    if (!state) return;
+    if (!state || state.step !== "jumlah") return;
 
-    await appendTransaction({
-      jenis: "Opening Balance",
-      kategori: "Account Setup",
-      subKategori: "Initial Balance",
-      deskripsi: "Account opening balance",
-      jumlah: state.jumlah,
-      mataUang: state.mataUang,
-      akun: state.akun,
-      saldoSesudah: state.saldoSesudah,
-    });
+    await ctx.deleteMessage().catch(() => {});
+    const jumlah = Number(ctx.message.text.replace(/[^\d]/g, ""));
+    if (!jumlah || jumlah <= 0) {
+      return ctx.reply("❌ Jumlah tidak valid.");
+    }
 
-    states.delete(ctx.from.id);
+    state.jumlah = jumlah;
+    state.step = "mataUang";
 
     return ctx.api.editMessageText(
       state.chatId,
       state.messageId,
-      "✅ Setup akun berhasil disimpan."
+      "Pilih mata uang:",
+      { reply_markup: kbList(OPTIONS.mataUang, "setupaccount:mataUang") }
     );
   },
 };
