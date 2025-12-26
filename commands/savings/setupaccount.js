@@ -16,22 +16,29 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) =>
-  Number(String(v).replace(/\./g, "").replace(",", "."));
+const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
 
-const formatNumber = (n) =>
-  new Intl.NumberFormat("id-ID").format(n);
+const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
 
 const formatAmount = (amount, currency) => {
   if (currency === "Rp") return `Rp${formatNumber(amount)}`;
   return `${amount} ${currency}`;
 };
 
-const kbList = (list, prefix) => ({
-  inline_keyboard: list.map((v) => [
-    { text: v, callback_data: `${prefix}:${v}` },
-  ]),
-});
+const kbList = (list, prefix, perRow = 2) => {
+  const keyboard = [];
+
+  for (let i = 0; i < list.length; i += perRow) {
+    keyboard.push(
+      list.slice(i, i + perRow).map((v) => ({
+        text: v,
+        callback_data: `${prefix}:${v}`,
+      }))
+    );
+  }
+
+  return { inline_keyboard: keyboard };
+};
 
 /* =========================
    GOOGLE SHEETS
@@ -60,9 +67,7 @@ async function fetchAllRows() {
 }
 
 function hasInitialBalance(rows, akun) {
-  return rows.some(
-    (r) => r[0] === "Initial" && r[6] === akun
-  );
+  return rows.some((r) => r[0] === "Initial" && r[6] === akun);
 }
 
 async function appendInitialBalance(data) {
@@ -76,18 +81,18 @@ async function appendInitialBalance(data) {
     requestBody: {
       values: [
         [
-          "Initial",              // Jenis
-          "Setup",                // Kategori
-          "Balance",              // Sub Kategori
-          "Initial balance",      // Deskripsi
-          data.jumlah,            // Jumlah
-          data.mataUang,          // Mata uang
-          data.akun,              // Akun
-          "System",               // Metode
-          0,                      // Saldo sebelum
-          data.jumlah,            // Saldo sesudah
-          "#initial",             // Tag
-          "Initial balance",      // Catatan
+          "Initial", // Jenis
+          "Setup", // Kategori
+          "Balance", // Sub Kategori
+          "Initial balance", // Deskripsi
+          data.jumlah, // Jumlah
+          data.mataUang, // Mata uang
+          data.akun, // Akun
+          "System", // Metode
+          0, // Saldo sebelum
+          data.jumlah, // Saldo sesudah
+          "#initial", // Tag
+          "Initial balance", // Catatan
           now,
           now,
         ],
@@ -166,10 +171,9 @@ Tag        : #initial`
 
       state.step = "jumlah";
       await ctx.answerCallbackQuery();
-      return edit(
-        `Masukkan *saldo awal* untuk akun *${value}*:`,
-        { inline_keyboard: [] }
-      );
+      return edit(`Masukkan *saldo awal* untuk akun *${value}*:`, {
+        inline_keyboard: [],
+      });
     }
 
     // STEP: MATA UANG
