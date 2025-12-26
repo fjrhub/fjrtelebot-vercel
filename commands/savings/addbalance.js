@@ -4,10 +4,9 @@ import { google } from "googleapis";
    OPTIONS
 ========================= */
 const OPTIONS = {
-  jenis: ["Saldo Awal", "Pemasukan", "Pengeluaran", "Transfer"],
+  jenis: ["Pemasukan", "Pengeluaran", "Transfer"],
 
   kategori: {
-    SaldoAwal: ["Inisialisasi Akun"],
     Pengeluaran: [
       "Makanan",
       "Transportasi",
@@ -20,10 +19,6 @@ const OPTIONS = {
   },
 
   subKategori: {
-    SaldoAwal: {
-      "Inisialisasi Akun": ["Saldo Awal Pertama"],
-    },
-
     Pengeluaran: {
       Makanan: ["Makan Harian", "Jajan", "Kopi"],
       Transportasi: ["Bensin", "Ojol", "Parkir", "Servis", "Darurat"],
@@ -43,7 +38,7 @@ const OPTIONS = {
     },
   },
 
-  akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo", "Gopay"],
+  akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo"],
   metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
   mataUang: ["Rp", "USDT"],
 };
