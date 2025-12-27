@@ -109,21 +109,42 @@ function getLastFromCache(rows, akun) {
   for (let i = rows.length - 1; i >= 0; i--) {
     if (rows[i][1] === akun) {
       return {
-        mataUang: rows[i][0] || "Rp",
+        mataUang: rows[i][0] || null,
         saldo: Number(rows[i][4]) || 0,
       };
     }
   }
-  return { saldo: 0, mataUang: "Rp" };
+  return { saldo: 0, mataUang: null };
 }
 
-async function appendRows(values) {
+async function appendTransaction(data) {
   const sheets = sheetsClient();
+  const now = new Date().toISOString();
+
   await sheets.spreadsheets.values.append({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: "Sheet1!A:O",
     valueInputOption: "USER_ENTERED",
-    requestBody: { values },
+    requestBody: {
+      values: [
+        [
+          data.jenis,
+          data.kategori,
+          data.subKategori,
+          data.deskripsi,
+          data.jumlah,
+          data.mataUang,
+          data.akun,
+          data.metode,
+          data.saldoSebelum,
+          data.saldoSesudah,
+          data.tag,
+          data.catatan,
+          now,
+          now,
+        ],
+      ],
+    },
   });
 }
 
@@ -170,99 +191,35 @@ export default {
     }
 
     if (data === "addbalance:save") {
-      const now = new Date().toISOString();
-
-      /* ===== TRANSFER ===== */
-      if (state.jenis === "Transfer") {
-        const asal = getLastFromCache(state.rows, state.akunAsal);
-        const tujuan = getLastFromCache(state.rows, state.akunTujuan);
-
-        await appendRows([
-          [
-            "Pengeluaran",
-            "Transfer",
-            "Antar Akun",
-            state.deskripsi,
-            state.jumlah,
-            asal.mataUang,
-            state.akunAsal,
-            "Transfer",
-            asal.saldo,
-            asal.saldo - state.jumlah,
-            state.tag,
-            state.catatan,
-            now,
-            now,
-          ],
-          [
-            "Pemasukan",
-            "Transfer",
-            "Antar Akun",
-            state.deskripsi,
-            state.jumlah,
-            tujuan.mataUang,
-            state.akunTujuan,
-            "Transfer",
-            tujuan.saldo,
-            tujuan.saldo + state.jumlah,
-            state.tag,
-            state.catatan,
-            now,
-            now,
-          ],
-        ]);
-      } else {
-        await appendRows([
-          [
-            state.jenis,
-            state.kategori,
-            state.subKategori,
-            state.deskripsi,
-            state.jumlah,
-            state.mataUang,
-            state.akun,
-            state.metode,
-            state.saldoSebelum,
-            state.saldoSesudah,
-            state.tag,
-            state.catatan,
-            now,
-            now,
-          ],
-        ]);
-      }
-
+      await appendTransaction(state);
       states.delete(ctx.from.id);
-      return edit("✅ Transaksi berhasil disimpan");
+
+      return edit(
+        `✅ Transaksi berhasil disimpan!
+
+Jenis: ${state.jenis}
+Kategori: ${state.kategori}
+Sub: ${state.subKategori}
+Deskripsi: ${state.deskripsi}
+Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
+Akun: ${state.akun}
+Metode: ${state.metode}
+Tag: ${state.tag || "-"}`,
+      );
     }
 
     const [, step, value] = data.split(":");
     state.history.push(state.step);
     state[step] = value;
 
-    /* ===== TRANSFER FLOW ===== */
-    if (step === "jenis" && value === "Transfer") {
-      state.step = "deskripsi";
-      return this.render(ctx, state);
-    }
-
-    if (step === "akunAsal") {
-      state.step = "akunTujuan";
-      return this.render(ctx, state);
-    }
-
-    if (step === "akunTujuan") {
-      if (state.akunAsal === state.akunTujuan) {
-        return edit("❌ Akun asal dan tujuan tidak boleh sama", kbList(OPTIONS.akun, "addbalance:akunTujuan"));
-      }
-      state.step = "tag";
-      return this.render(ctx, state);
-    }
-
     if (step === "akun") {
       const { saldo, mataUang } = getLastFromCache(state.rows, value);
       state.saldoSebelum = saldo;
-      state.mataUang = mataUang;
+
+      state.step = mataUang ? "metode" : "mataUang";
+      if (mataUang) state.mataUang = mataUang;
+
+      return this.render(ctx, state);
     }
 
     const flow = {
@@ -289,9 +246,7 @@ export default {
       state.step = "jumlah";
     } else if (state.step === "jumlah") {
       state.jumlah = toNumber(ctx.message.text);
-      state.step = state.jenis === "Transfer" ? "akunAsal" : "akun";
-    } else if (state.step === "akunAsal") {
-      state.akunAsal = ctx.message.text;
+      state.step = "akun";
     } else if (state.step === "tag") {
       state.tag = ctx.message.text;
       state.step = "catatan";
@@ -299,12 +254,10 @@ export default {
       state.catatan = ctx.message.text;
       state.step = "confirm";
 
-      if (state.jenis !== "Transfer") {
-        state.saldoSesudah =
-          state.jenis === "Pemasukan"
-            ? state.saldoSebelum + state.jumlah
-            : state.saldoSebelum - state.jumlah;
-      }
+      state.saldoSesudah =
+        state.jenis === "Pemasukan"
+          ? state.saldoSebelum + state.jumlah
+          : state.saldoSebelum - state.jumlah;
     }
 
     return this.render(ctx, state);
@@ -321,12 +274,18 @@ export default {
         return edit("Pilih jenis transaksi:", kbJenisAwal());
 
       case "kategori":
-        return edit("Pilih kategori:", kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori"));
+        return edit(
+          "Pilih kategori:",
+          kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori")
+        );
 
       case "subKategori":
         return edit(
           "Pilih sub kategori:",
-          kbList(OPTIONS.subKategori[state.jenis][state.kategori], "addbalance:subKategori")
+          kbList(
+            OPTIONS.subKategori[state.jenis][state.kategori],
+            "addbalance:subKategori"
+          )
         );
 
       case "deskripsi":
@@ -338,17 +297,17 @@ export default {
       case "akun":
         return edit("Pilih akun:", kbList(OPTIONS.akun, "addbalance:akun"));
 
-      case "akunAsal":
-        return edit("Pilih akun asal:", kbList(OPTIONS.akun, "addbalance:akunAsal"));
-
-      case "akunTujuan":
-        return edit("Pilih akun tujuan:", kbList(OPTIONS.akun, "addbalance:akunTujuan"));
-
       case "mataUang":
-        return edit("Pilih mata uang:", kbList(OPTIONS.mataUang, "addbalance:mataUang"));
+        return edit(
+          "Pilih mata uang:",
+          kbList(OPTIONS.mataUang, "addbalance:mataUang")
+        );
 
       case "metode":
-        return edit("Pilih metode:", kbList(OPTIONS.metode, "addbalance:metode"));
+        return edit(
+          "Pilih metode:",
+          kbList(OPTIONS.metode, "addbalance:metode")
+        );
 
       case "tag":
         return edit("Masukkan tag:", kbText());
@@ -357,34 +316,6 @@ export default {
         return edit("Masukkan catatan:", kbText());
 
       case "confirm":
-        if (state.jenis === "Transfer") {
-          const asal = getLastFromCache(state.rows, state.akunAsal);
-          const tujuan = getLastFromCache(state.rows, state.akunTujuan);
-
-          return edit(
-            `🧾 Konfirmasi Transfer
-
-Deskripsi: ${state.deskripsi}
-Jumlah: ${formatNumber(state.jumlah)} ${asal.mataUang}
-
-Dari ${state.akunAsal}
-Saldo: ${formatNumber(asal.saldo)} → ${formatNumber(asal.saldo - state.jumlah)}
-
-Ke ${state.akunTujuan}
-Saldo: ${formatNumber(tujuan.saldo)} → ${formatNumber(tujuan.saldo + state.jumlah)}
-
-Tag: ${state.tag}
-Catatan: ${state.catatan}`,
-            {
-              inline_keyboard: [
-                [{ text: "✅ Simpan", callback_data: "addbalance:save" }],
-                [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
-                [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
-              ],
-            }
-          );
-        }
-
         return edit(
           `🧾 Konfirmasi Transaksi
 
@@ -395,9 +326,9 @@ Deskripsi: ${state.deskripsi}
 Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
 Akun: ${state.akun}
 Metode: ${state.metode}
-Saldo: ${formatNumber(state.saldoSebelum)} → ${formatNumber(state.saldoSesudah)}
 Tag: ${state.tag}
-Catatan: ${state.catatan}`,
+
+Lanjutkan?`,
           {
             inline_keyboard: [
               [{ text: "✅ Simpan", callback_data: "addbalance:save" }],
