@@ -1,14 +1,6 @@
 import { google } from "googleapis";
 
 /* =========================
-OPTIONS
-========================= */
-const OPTIONS = {
-  akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo", "Gopay"],
-  mataUang: ["Rp", "USDT"],
-};
-
-/* =========================
 STATE
 ========================= */
 const states = new Map();
@@ -25,11 +17,15 @@ const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
 KEYBOARD
 ========================= */
 const kbBack = () => ({
-  inline_keyboard: [[{ text: "⬅️ Back", callback_data: "editbalance:back" }]],
+  inline_keyboard: [
+    [{ text: "⬅️ Back", callback_data: "editbalance:back" }],
+  ],
 });
 
 const kbCancel = () => ({
-  inline_keyboard: [[{ text: "❌ Cancel", callback_data: "editbalance:cancel" }]],
+  inline_keyboard: [
+    [{ text: "❌ Cancel", callback_data: "editbalance:cancel" }],
+  ],
 });
 
 const kbListNumbered = (items, prefix) => {
@@ -69,28 +65,58 @@ function sheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
+// Ambil semua data transaksi (tanpa header)
 async function fetchAllRows() {
   const sheets = sheetsClient();
-  // Ambil mulai dari A2 (abaikan header)
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!A2:O", // ← mulai dari baris 2
+    range: "Sheet1!A2:N",
   });
   return res.data.values || [];
 }
 
-async function updateRow(rowIndex, updatedRow) {
+// Update banyak baris sekaligus (batch)
+async function batchUpdateRows(startIndex, rowsToUpdate) {
   const sheets = sheetsClient();
-  // rowIndex adalah 0-based dari data (A2 = index 0 → baris ke-2 di Sheets)
-  const sheetRowIndex = rowIndex + 2; // karena data mulai di A2
-  const range = `Sheet1!A${sheetRowIndex}:O${sheetRowIndex}`;
-  await sheets.spreadsheets.values.update({
+  const requests = rowsToUpdate.map((row, i) => {
+    const sheetRow = startIndex + i + 2; // A2 = row 2 → index 0 → row 2
+    return {
+      range: `Sheet1!A${sheetRow}:N${sheetRow}`,
+      values: [row],
+    };
+  });
+
+  await sheets.spreadsheets.values.batchUpdate({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range,
-    valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [updatedRow],
+      valueInputOption: "USER_ENTERED",
+      data: requests, // <-- Perhatikan: ini harus 'data', bukan 'requests'
     },
+  });
+}
+
+/* =========================
+SALDO REKALKULASI
+========================= */
+function recalculateBalances(rows) {
+  const balances = {}; // akun → saldo terkini
+
+  return rows.map((row) => {
+    const akun = row[6] || "Unknown";
+    const jenis = row[0];
+    const jumlah = Number(row[4]) || 0;
+
+    const saldoSebelum = balances[akun] || 0;
+    const saldoSesudah =
+      jenis === "Pemasukan" ? saldoSebelum + jumlah : saldoSebelum - jumlah;
+
+    balances[akun] = saldoSesudah;
+
+    // Update kolom I (Saldo Sebelum) dan J (Saldo Setelah)
+    const newRow = [...row];
+    newRow[8] = saldoSebelum;
+    newRow[9] = saldoSesudah;
+    return newRow;
   });
 }
 
@@ -117,7 +143,7 @@ export default {
 
     states.set(ctx.from.id, {
       step: "select",
-      rows,
+      originalRows: rows, // simpan snapshot awal
       chatId: ctx.chat.id,
       messageId: msg.message_id,
     });
@@ -144,7 +170,7 @@ export default {
         return edit("❌ Dibatalkan.");
       }
       state.step = "select";
-      const displayList = state.rows.map(
+      const displayList = state.originalRows.map(
         (row, i) =>
           `${i + 1}. ${row[0] || "-"} | ${row[3] || "-"} | ${formatNumber(Number(row[4]))} ${row[5] || ""} | ${row[6] || "-"}`
       );
@@ -152,24 +178,23 @@ export default {
     }
 
     if (data === "editbalance:save") {
-      // Panggil logika simpan
       return this.save(ctx);
     }
 
     if (data.startsWith("editbalance:select:")) {
       const index = parseInt(data.split(":")[2], 10);
-      if (isNaN(index) || index < 0 || index >= state.rows.length) {
+      const rows = state.originalRows;
+      if (isNaN(index) || index < 0 || index >= rows.length) {
         return edit("❌ Nomor tidak valid.", kbCancel());
       }
 
-      const selectedRow = state.rows[index];
-      state.selectedIndex = index; // indeks 0-based di array `rows`
-      state.originalRow = [...selectedRow];
-
+      const selectedRow = rows[index];
+      state.selectedIndex = index;
+      state.editedRows = [...rows]; // working copy
+      state.originalJumlah = Number(selectedRow[4]) || 0;
       state.jenis = selectedRow[0] || "";
       state.akun = selectedRow[6] || "";
       state.mataUang = selectedRow[5] || "Rp";
-      state.originalJumlah = Number(selectedRow[4]) || 0;
 
       state.step = "jumlah";
       return this.render(ctx, state);
@@ -191,7 +216,13 @@ export default {
       return edit("❌ Jumlah tidak valid. Masukkan angka positif:", kbBack());
     }
 
+    // Update jumlah di working copy
+    state.editedRows[state.selectedIndex][4] = newAmount;
     state.newJumlah = newAmount;
+
+    // Update timestamp "Diperbarui Pada" (kolom N = index 13)
+    state.editedRows[state.selectedIndex][13] = new Date().toISOString();
+
     state.step = "confirm";
     return this.render(ctx, state);
   },
@@ -208,12 +239,14 @@ export default {
 
       case "confirm":
         return edit(
-          `🔁 Konfirmasi Perubahan Jumlah
+          `🔁 Konfirmasi Perubahan
 
-Transaksi: ${state.originalRow[3] || "-"}
+Transaksi: ${state.editedRows[state.selectedIndex]?.[3] || "-"}
 Jumlah lama: ${formatNumber(state.originalJumlah)} ${state.mataUang}
 Jumlah baru: ${formatNumber(state.newJumlah)} ${state.mataUang}
 Akun: ${state.akun}
+
+⚠️ Saldo semua transaksi setelah ini akan disesuaikan otomatis.
 
 Simpan perubahan?`,
           kbConfirm()
@@ -233,23 +266,23 @@ Simpan perubahan?`,
         reply_markup: kb,
       });
 
-    const updatedRow = [...state.originalRow];
-    updatedRow[4] = state.newJumlah; // kolom jumlah
-    updatedRow[14] = new Date().toISOString(); // kolom editedAt (O)
-
     try {
-      await updateRow(state.selectedIndex, updatedRow); // sesuai indeks 0-based dari A2
+      // Hitung ulang saldo seluruh data berdasarkan editedRows
+      const recalculatedRows = recalculateBalances(state.editedRows);
+
+      // Update semua baris ke Sheets
+      await batchUpdateRows(0, recalculatedRows);
+
       states.delete(ctx.from.id);
       return edit(
-        `✅ Jumlah berhasil diubah!
+        `✅ Transaksi dan saldo berhasil diperbarui!
 
-Dari: ${formatNumber(state.originalJumlah)} ${state.mataUang}
-Menjadi: ${formatNumber(state.newJumlah)} ${state.mataUang}
+Jumlah diubah dari ${formatNumber(state.originalJumlah)} menjadi ${formatNumber(state.newJumlah)} ${state.mataUang}
 Akun: ${state.akun}`
       );
     } catch (err) {
-      console.error("Gagal update Google Sheets:", err);
-      return edit("❌ Gagal menyimpan. Coba lagi nanti.", kbCancel());
+      console.error("Gagal update saldo:", err);
+      return edit("❌ Gagal memperbarui. Coba lagi nanti.", kbCancel());
     }
   },
 };
