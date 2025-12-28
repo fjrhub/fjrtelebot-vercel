@@ -70,7 +70,7 @@ async function fetchAllRows() {
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!A2:N",
+    range: "Sheet1!A2:N", // ← start dari baris 2
   });
   return res.data.values || [];
 }
@@ -90,7 +90,7 @@ async function batchUpdateRows(startIndex, rowsToUpdate) {
     spreadsheetId: process.env.SPREADSHEET_ID,
     requestBody: {
       valueInputOption: "USER_ENTERED",
-      data: requests, // <-- Perhatikan: ini harus 'data', bukan 'requests'
+      data: requests, // <-- Perhatikan: ini harus 'data'
     },
   });
 }
@@ -132,10 +132,15 @@ export default {
       return ctx.reply("Tidak ada transaksi untuk diedit.");
     }
 
-    const displayList = rows.map(
-      (row, i) =>
-        `${i + 1}. ${row[0] || "-"} | ${row[3] || "-"} | ${formatNumber(Number(row[4]))} ${row[5] || ""} | ${row[6] || "-"}`
-    );
+    // Buat daftar tampilan: nomor. Jenis | Deskripsi | Jumlah | Akun
+    const displayList = rows.map((row, i) => {
+      const jenis = row[0] || "-";
+      const deskripsi = row[3] || "-";
+      const jumlah = formatNumber(Number(row[4]) || 0);
+      const mataUang = row[5] || "Rp";
+      const akun = row[6] || "-";
+      return `${jenis} | ${deskripsi} | ${jumlah} ${mataUang} | ${akun}`;
+    });
 
     const msg = await ctx.reply("Pilih transaksi (nomor):", {
       reply_markup: kbListNumbered(displayList, "editbalance:select"),
@@ -170,10 +175,14 @@ export default {
         return edit("❌ Dibatalkan.");
       }
       state.step = "select";
-      const displayList = state.originalRows.map(
-        (row, i) =>
-          `${i + 1}. ${row[0] || "-"} | ${row[3] || "-"} | ${formatNumber(Number(row[4]))} ${row[5] || ""} | ${row[6] || "-"}`
-      );
+      const displayList = state.originalRows.map((row, i) => {
+        const jenis = row[0] || "-";
+        const deskripsi = row[3] || "-";
+        const jumlah = formatNumber(Number(row[4]) || 0);
+        const mataUang = row[5] || "Rp";
+        const akun = row[6] || "-";
+        return `${jenis} | ${deskripsi} | ${jumlah} ${mataUang} | ${akun}`;
+      });
       return edit("Pilih transaksi (nomor):", kbListNumbered(displayList, "editbalance:select"));
     }
 
@@ -238,10 +247,12 @@ export default {
         return edit("Masukkan jumlah baru:", kbBack());
 
       case "confirm":
+        const selectedRow = state.editedRows[state.selectedIndex];
+        const deskripsi = selectedRow[3] || "-";
         return edit(
           `🔁 Konfirmasi Perubahan
 
-Transaksi: ${state.editedRows[state.selectedIndex]?.[3] || "-"}
+Transaksi: ${deskripsi}
 Jumlah lama: ${formatNumber(state.originalJumlah)} ${state.mataUang}
 Jumlah baru: ${formatNumber(state.newJumlah)} ${state.mataUang}
 Akun: ${state.akun}
