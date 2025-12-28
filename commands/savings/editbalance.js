@@ -44,6 +44,14 @@ const kbListNumbered = (items, prefix) => {
   };
 };
 
+const kbConfirm = () => ({
+  inline_keyboard: [
+    [{ text: "✅ Simpan", callback_data: "editbalance:save" }],
+    [{ text: "⬅️ Back", callback_data: "editbalance:back" }],
+    [{ text: "❌ Cancel", callback_data: "editbalance:cancel" }],
+  ],
+});
+
 /* =========================
 GOOGLE SHEETS
 ========================= */
@@ -63,17 +71,19 @@ function sheetsClient() {
 
 async function fetchAllRows() {
   const sheets = sheetsClient();
-  // Ambil semua kolom yang relevan, termasuk timestamp agar bisa update by row
+  // Ambil mulai dari A2 (abaikan header)
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!A:O",
+    range: "Sheet1!A2:O", // ← mulai dari baris 2
   });
   return res.data.values || [];
 }
 
 async function updateRow(rowIndex, updatedRow) {
   const sheets = sheetsClient();
-  const range = `Sheet1!A${rowIndex + 1}:O${rowIndex + 1}`;
+  // rowIndex adalah 0-based dari data (A2 = index 0 → baris ke-2 di Sheets)
+  const sheetRowIndex = rowIndex + 2; // karena data mulai di A2
+  const range = `Sheet1!A${sheetRowIndex}:O${sheetRowIndex}`;
   await sheets.spreadsheets.values.update({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range,
@@ -96,10 +106,9 @@ export default {
       return ctx.reply("Tidak ada transaksi untuk diedit.");
     }
 
-    // Tampilkan daftar transaksi dengan nomor (1-based)
     const displayList = rows.map(
       (row, i) =>
-        `${i + 1}. ${row[0]} | ${row[3]} | ${formatNumber(Number(row[4]))} ${row[5]} | ${row[6]}`
+        `${i + 1}. ${row[0] || "-"} | ${row[3] || "-"} | ${formatNumber(Number(row[4]))} ${row[5] || ""} | ${row[6] || "-"}`
     );
 
     const msg = await ctx.reply("Pilih transaksi (nomor):", {
@@ -134,36 +143,37 @@ export default {
         states.delete(ctx.from.id);
         return edit("❌ Dibatalkan.");
       }
-      state.step = "select"; // kembali ke pemilihan
+      state.step = "select";
       const displayList = state.rows.map(
         (row, i) =>
-          `${i + 1}. ${row[0]} | ${row[3]} | ${formatNumber(Number(row[4]))} ${row[5]} | ${row[6]}`
+          `${i + 1}. ${row[0] || "-"} | ${row[3] || "-"} | ${formatNumber(Number(row[4]))} ${row[5] || ""} | ${row[6] || "-"}`
       );
       return edit("Pilih transaksi (nomor):", kbListNumbered(displayList, "editbalance:select"));
     }
 
+    if (data === "editbalance:save") {
+      // Panggil logika simpan
+      return this.save(ctx);
+    }
+
     if (data.startsWith("editbalance:select:")) {
-      const index = Number(data.split(":")[2]);
-      if (index < 0 || index >= state.rows.length) {
+      const index = parseInt(data.split(":")[2], 10);
+      if (isNaN(index) || index < 0 || index >= state.rows.length) {
         return edit("❌ Nomor tidak valid.", kbCancel());
       }
 
       const selectedRow = state.rows[index];
-      state.selectedIndex = index;
-      state.originalRow = [...selectedRow]; // simpan salinan asli
+      state.selectedIndex = index; // indeks 0-based di array `rows`
+      state.originalRow = [...selectedRow];
 
-      // Simpan nilai awal
-      state.jenis = selectedRow[0];
-      state.akun = selectedRow[6];
-      state.mataUang = selectedRow[5];
-      state.originalJumlah = Number(selectedRow[4]);
+      state.jenis = selectedRow[0] || "";
+      state.akun = selectedRow[6] || "";
+      state.mataUang = selectedRow[5] || "Rp";
+      state.originalJumlah = Number(selectedRow[4]) || 0;
 
-      // Langsung ke input jumlah baru
       state.step = "jumlah";
       return this.render(ctx, state);
     }
-
-    // Tidak ada step lain untuk callback selain back/cancel/select
   },
 
   async handleText(ctx) {
@@ -176,22 +186,13 @@ export default {
     if (isNaN(newAmount) || newAmount <= 0) {
       const edit = (text, kb) =>
         ctx.api.editMessageText(state.chatId, state.messageId, text, {
-          reply_markup: kb,
+          reply_markup: kbBack(),
         });
       return edit("❌ Jumlah tidak valid. Masukkan angka positif:", kbBack());
     }
 
     state.newJumlah = newAmount;
     state.step = "confirm";
-
-    // Hitung selisih
-    const diff = state.newJumlah - state.originalJumlah;
-    const isPemasukan = state.jenis === "Pemasukan";
-
-    // Update saldoSebelum & saldoSesudah (opsional: bisa diabaikan jika Sheets tidak pakai kolom saldo)
-    // Di sini kita asumsikan saldo tidak disimpan di Sheets → tidak perlu update saldo
-    // Jadi hanya ganti kolom jumlah dan timestamp edit
-
     return this.render(ctx, state);
   },
 
@@ -209,19 +210,13 @@ export default {
         return edit(
           `🔁 Konfirmasi Perubahan Jumlah
 
-Transaksi: ${state.originalRow[3]}
+Transaksi: ${state.originalRow[3] || "-"}
 Jumlah lama: ${formatNumber(state.originalJumlah)} ${state.mataUang}
 Jumlah baru: ${formatNumber(state.newJumlah)} ${state.mataUang}
 Akun: ${state.akun}
 
 Simpan perubahan?`,
-          {
-            inline_keyboard: [
-              [{ text: "✅ Simpan", callback_data: "editbalance:save" }],
-              [{ text: "⬅️ Back", callback_data: "editbalance:back" }],
-              [{ text: "❌ Cancel", callback_data: "editbalance:cancel" }],
-            ],
-          }
+          kbConfirm()
         );
 
       default:
@@ -238,13 +233,12 @@ Simpan perubahan?`,
         reply_markup: kb,
       });
 
-    // Update hanya kolom JUMLAH (index 4) dan TIMESTAMP EDIT (index 14)
     const updatedRow = [...state.originalRow];
-    updatedRow[4] = state.newJumlah;
-    updatedRow[14] = new Date().toISOString(); // kolom O: editedAt
+    updatedRow[4] = state.newJumlah; // kolom jumlah
+    updatedRow[14] = new Date().toISOString(); // kolom editedAt (O)
 
     try {
-      await updateRow(state.selectedIndex + 1, updatedRow); // +1 karena Sheets mulai dari baris 1 (header di baris 1, data mulai baris 2)
+      await updateRow(state.selectedIndex, updatedRow); // sesuai indeks 0-based dari A2
       states.delete(ctx.from.id);
       return edit(
         `✅ Jumlah berhasil diubah!
@@ -254,8 +248,8 @@ Menjadi: ${formatNumber(state.newJumlah)} ${state.mataUang}
 Akun: ${state.akun}`
       );
     } catch (err) {
-      console.error("Gagal update Sheets:", err);
-      return edit("❌ Gagal menyimpan perubahan. Coba lagi nanti.", kbCancel());
+      console.error("Gagal update Google Sheets:", err);
+      return edit("❌ Gagal menyimpan. Coba lagi nanti.", kbCancel());
     }
   },
 };
