@@ -28,18 +28,6 @@ const kbCancel = () => ({
   ],
 });
 
-const kbListNumbered = (items, prefix) => {
-  const buttons = items.map((item, i) => [
-    {
-      text: `${i + 1}. ${item}`,
-      callback_data: `${prefix}:${i}`,
-    },
-  ]);
-  return {
-    inline_keyboard: [...buttons, [{ text: "❌ Cancel", callback_data: "editbalance:cancel" }]],
-  };
-};
-
 const kbConfirm = () => ({
   inline_keyboard: [
     [{ text: "✅ Simpan", callback_data: "editbalance:save" }],
@@ -47,6 +35,27 @@ const kbConfirm = () => ({
     [{ text: "❌ Cancel", callback_data: "editbalance:cancel" }],
   ],
 });
+
+// Buat keyboard grid 4 kolom
+const kbGrid = (count, prefix) => {
+  const buttons = [];
+  const cols = 4; // 4 tombol per baris
+
+  for (let i = 0; i < count; i++) {
+    if (i % cols === 0) {
+      buttons.push([]); // baris baru
+    }
+    buttons[buttons.length - 1].push({
+      text: `${i + 1}`,
+      callback_data: `${prefix}:${i}`,
+    });
+  }
+
+  // Tambahkan tombol cancel di bawah
+  buttons.push([{ text: "❌ Cancel", callback_data: "editbalance:cancel" }]);
+
+  return { inline_keyboard: buttons };
+};
 
 /* =========================
 GOOGLE SHEETS
@@ -70,7 +79,7 @@ async function fetchAllRows() {
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!A2:N", // ← start dari baris 2
+    range: "Sheet1!A2:N",
   });
   return res.data.values || [];
 }
@@ -90,7 +99,7 @@ async function batchUpdateRows(startIndex, rowsToUpdate) {
     spreadsheetId: process.env.SPREADSHEET_ID,
     requestBody: {
       valueInputOption: "USER_ENTERED",
-      data: requests, // <-- Perhatikan: ini harus 'data'
+      data: requests,
     },
   });
 }
@@ -132,23 +141,13 @@ export default {
       return ctx.reply("Tidak ada transaksi untuk diedit.");
     }
 
-    // Buat daftar tampilan: nomor. Jenis | Deskripsi | Jumlah | Akun
-    const displayList = rows.map((row, i) => {
-      const jenis = row[0] || "-";
-      const deskripsi = row[3] || "-";
-      const jumlah = formatNumber(Number(row[4]) || 0);
-      const mataUang = row[5] || "Rp";
-      const akun = row[6] || "-";
-      return `${jenis} | ${deskripsi} | ${jumlah} ${mataUang} | ${akun}`;
-    });
-
     const msg = await ctx.reply("Pilih transaksi (nomor):", {
-      reply_markup: kbListNumbered(displayList, "editbalance:select"),
+      reply_markup: kbGrid(rows.length, "editbalance:select"),
     });
 
     states.set(ctx.from.id, {
       step: "select",
-      originalRows: rows, // simpan snapshot awal
+      originalRows: rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
     });
@@ -175,15 +174,10 @@ export default {
         return edit("❌ Dibatalkan.");
       }
       state.step = "select";
-      const displayList = state.originalRows.map((row, i) => {
-        const jenis = row[0] || "-";
-        const deskripsi = row[3] || "-";
-        const jumlah = formatNumber(Number(row[4]) || 0);
-        const mataUang = row[5] || "Rp";
-        const akun = row[6] || "-";
-        return `${jenis} | ${deskripsi} | ${jumlah} ${mataUang} | ${akun}`;
-      });
-      return edit("Pilih transaksi (nomor):", kbListNumbered(displayList, "editbalance:select"));
+      return edit(
+        "Pilih transaksi (nomor):",
+        kbGrid(state.originalRows.length, "editbalance:select")
+      );
     }
 
     if (data === "editbalance:save") {
