@@ -36,14 +36,19 @@ const kbConfirm = () => ({
   ],
 });
 
-// Buat keyboard grid 4 kolom
-const kbGrid = (count, prefix) => {
-  const buttons = [];
-  const cols = 4; // 4 tombol per baris
+// Keyboard paginated: 28 item per halaman (4 kolom × 7 baris)
+const kbPaginatedGrid = (totalCount, currentPage, prefix) => {
+  const itemsPerPage = 28;
+  const start = currentPage * itemsPerPage;
+  const end = Math.min(start + itemsPerPage, totalCount);
 
-  for (let i = 0; i < count; i++) {
-    if (i % cols === 0) {
-      buttons.push([]); // baris baru
+  const buttons = [];
+  const cols = 4;
+
+  // Isi tombol nomor untuk halaman ini
+  for (let i = start; i < end; i++) {
+    if ((i - start) % cols === 0) {
+      buttons.push([]);
     }
     buttons[buttons.length - 1].push({
       text: `${i + 1}`,
@@ -51,7 +56,21 @@ const kbGrid = (count, prefix) => {
     });
   }
 
-  // Tambahkan tombol cancel di bawah
+  // Baris navigasi: Prev / Next
+  const navRow = [];
+  if (currentPage > 0) {
+    navRow.push({ text: "⬅️ Prev", callback_data: `editbalance:page:${currentPage - 1}` });
+  }
+  navRow.push({ text: `📄 ${currentPage + 1}`, callback_data: "editbalance:noop" }); // disabled
+  if (end < totalCount) {
+    navRow.push({ text: "➡️ Next", callback_data: `editbalance:page:${currentPage + 1}` });
+  }
+
+  if (navRow.length > 0) {
+    buttons.push(navRow);
+  }
+
+  // Tombol cancel selalu di paling bawah
   buttons.push([{ text: "❌ Cancel", callback_data: "editbalance:cancel" }]);
 
   return { inline_keyboard: buttons };
@@ -85,10 +104,10 @@ async function fetchAllRows() {
 }
 
 // Update banyak baris sekaligus (batch)
-async function batchUpdateRows(startIndex, rowsToUpdate) {
+async function batchUpdateRows(rowsToUpdate) {
   const sheets = sheetsClient();
   const requests = rowsToUpdate.map((row, i) => {
-    const sheetRow = startIndex + i + 2; // A2 = row 2 → index 0 → row 2
+    const sheetRow = i + 2; // A2 = row 2 → index 0 → row 2
     return {
       range: `Sheet1!A${sheetRow}:N${sheetRow}`,
       values: [row],
@@ -142,12 +161,13 @@ export default {
     }
 
     const msg = await ctx.reply("Pilih transaksi (nomor):", {
-      reply_markup: kbGrid(rows.length, "editbalance:select"),
+      reply_markup: kbPaginatedGrid(rows.length, 0, "editbalance:select"),
     });
 
     states.set(ctx.from.id, {
       step: "select",
       originalRows: rows,
+      currentPage: 0,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
     });
@@ -163,6 +183,11 @@ export default {
         reply_markup: kb,
       });
 
+    // Handle noop (halaman aktif)
+    if (data === "editbalance:noop") {
+      return ctx.answerCallbackQuery({ text: `Halaman ${state.currentPage + 1}` });
+    }
+
     if (data === "editbalance:cancel") {
       states.delete(ctx.from.id);
       return edit("❌ Proses dibatalkan.");
@@ -176,7 +201,7 @@ export default {
       state.step = "select";
       return edit(
         "Pilih transaksi (nomor):",
-        kbGrid(state.originalRows.length, "editbalance:select")
+        kbPaginatedGrid(state.originalRows.length, state.currentPage || 0, "editbalance:select")
       );
     }
 
@@ -184,6 +209,19 @@ export default {
       return this.save(ctx);
     }
 
+    // Handle pagination
+    if (data.startsWith("editbalance:page:")) {
+      const newPage = parseInt(data.split(":")[2], 10);
+      if (isNaN(newPage) || newPage < 0) return;
+
+      state.currentPage = newPage;
+      return edit(
+        "Pilih transaksi (nomor):",
+        kbPaginatedGrid(state.originalRows.length, state.currentPage, "editbalance:select")
+      );
+    }
+
+    // Handle pemilihan transaksi
     if (data.startsWith("editbalance:select:")) {
       const index = parseInt(data.split(":")[2], 10);
       const rows = state.originalRows;
@@ -275,8 +313,8 @@ Simpan perubahan?`,
       // Hitung ulang saldo seluruh data berdasarkan editedRows
       const recalculatedRows = recalculateBalances(state.editedRows);
 
-      // Update semua baris ke Sheets
-      await batchUpdateRows(0, recalculatedRows);
+      // Update semua baris ke Sheets (urutan penting!)
+      await batchUpdateRows(recalculatedRows);
 
       states.delete(ctx.from.id);
       return edit(
