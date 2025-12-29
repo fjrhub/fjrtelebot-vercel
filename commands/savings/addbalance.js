@@ -51,7 +51,8 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
+const toNumber = (v) =>
+  Number(String(v).replace(/\./g, "").replace(",", "."));
 
 const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
 
@@ -77,22 +78,6 @@ const kbList = (list, prefix) => ({
 const kbText = () => ({
   inline_keyboard: [[{ text: "⬅️ Back", callback_data: "addbalance:back" }]],
 });
-
-const parseAmount = (value, currency) => {
-  const v = String(value).trim();
-
-  if (currency === "Rp") {
-    // Rp 3.000.000 → 3000000
-    return Number(v.replace(/\./g, "").replace(",", "."));
-  }
-
-  if (currency === "USDT") {
-    // USDT 3 / 3.5 / 0.25
-    return Number(v.replace(",", "."));
-  }
-
-  return Number(v);
-};
 
 /* =========================
    GOOGLE SHEETS
@@ -219,7 +204,7 @@ Deskripsi: ${state.deskripsi}
 Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
 Akun: ${state.akun}
 Metode: ${state.metode}
-Tag: ${state.tag || "-"}`
+Tag: ${state.tag || "-"}`,
       );
     }
 
@@ -260,7 +245,7 @@ Tag: ${state.tag || "-"}`
       state.deskripsi = ctx.message.text;
       state.step = "jumlah";
     } else if (state.step === "jumlah") {
-      state.jumlah = parseAmount(ctx.message.text, state.mataUang);
+      state.jumlah = toNumber(ctx.message.text);
       state.step = "akun";
     } else if (state.step === "tag") {
       state.tag = ctx.message.text;
