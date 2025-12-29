@@ -51,10 +51,20 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) =>
-  Number(String(v).replace(/\./g, "").replace(",", "."));
+const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
 
-const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
+const formatAmount = (amount, currency) => {
+  if (currency === "USDT") {
+    // USDT biasanya ditampilkan dengan 2 desimal atau tanpa koma ribuan
+    return `${Number(amount).toFixed(2)} USDT`;
+  } else if (currency === "Rp") {
+    // Format Rupiah: Rp1.000 atau Rp1.000.000
+    return `Rp${new Intl.NumberFormat("id-ID").format(Math.round(amount))}`;
+  } else {
+    // fallback jika ada mata uang lain
+    return `${currency}${new Intl.NumberFormat("id-ID").format(amount)}`;
+  }
+};
 
 /* =========================
    KEYBOARD
@@ -201,10 +211,10 @@ Jenis: ${state.jenis}
 Kategori: ${state.kategori}
 Sub: ${state.subKategori}
 Deskripsi: ${state.deskripsi}
-Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
+Jumlah: ${formatAmount(state.jumlah, state.mataUang)}
 Akun: ${state.akun}
 Metode: ${state.metode}
-Tag: ${state.tag || "-"}`,
+Tag: ${state.tag || "-"}`
       );
     }
 
@@ -323,7 +333,7 @@ Jenis: ${state.jenis}
 Kategori: ${state.kategori}
 Sub: ${state.subKategori}
 Deskripsi: ${state.deskripsi}
-Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
+Jumlah: ${formatAmount(state.jumlah, state.mataUang)}
 Akun: ${state.akun}
 Metode: ${state.metode}
 Tag: ${state.tag}
