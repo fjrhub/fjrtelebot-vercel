@@ -51,10 +51,33 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) =>
-  Number(String(v).replace(/\./g, "").replace(",", "."));
+const parseAmount = (value, currency) => {
+  const v = String(value).trim();
 
-const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
+  if (currency === "Rp") {
+    // 3.000.000 → 3000000
+    return Number(v.replace(/\./g, "").replace(",", "."));
+  }
+
+  if (currency === "USDT") {
+    // 3 / 3.5 / 0.25
+    return Number(v.replace(",", "."));
+  }
+
+  return Number(v);
+};
+
+const formatAmount = (value, currency) => {
+  if (currency === "Rp") {
+    return "Rp" + new Intl.NumberFormat("id-ID").format(value);
+  }
+
+  if (currency === "USDT") {
+    return value.toFixed(2) + " USDT";
+  }
+
+  return value;
+};
 
 /* =========================
    KEYBOARD
@@ -201,7 +224,7 @@ Jenis: ${state.jenis}
 Kategori: ${state.kategori}
 Sub: ${state.subKategori}
 Deskripsi: ${state.deskripsi}
-Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
+Jumlah: ${formatAmount(state.jumlah, state.mataUang)}
 Akun: ${state.akun}
 Metode: ${state.metode}
 Tag: ${state.tag || "-"}`,
@@ -245,7 +268,7 @@ Tag: ${state.tag || "-"}`,
       state.deskripsi = ctx.message.text;
       state.step = "jumlah";
     } else if (state.step === "jumlah") {
-      state.jumlah = toNumber(ctx.message.text);
+      state.jumlah = parseAmount(ctx.message.text, state.mataUang);
       state.step = "akun";
     } else if (state.step === "tag") {
       state.tag = ctx.message.text;
@@ -292,7 +315,12 @@ Tag: ${state.tag || "-"}`,
         return edit("Masukkan deskripsi:", kbText());
 
       case "jumlah":
-        return edit("Masukkan jumlah:", kbText());
+        return edit(
+          state.mataUang === "USDT"
+            ? "Masukkan jumlah (contoh: 3 atau 3.5):"
+            : "Masukkan jumlah (contoh: 3.000):",
+          kbText()
+        );
 
       case "akun":
         return edit("Pilih akun:", kbList(OPTIONS.akun, "addbalance:akun"));
@@ -323,7 +351,7 @@ Jenis: ${state.jenis}
 Kategori: ${state.kategori}
 Sub: ${state.subKategori}
 Deskripsi: ${state.deskripsi}
-Jumlah: ${formatNumber(state.jumlah)} ${state.mataUang}
+Jumlah: ${formatAmount(state.jumlah, state.mataUang)}
 Akun: ${state.akun}
 Metode: ${state.metode}
 Tag: ${state.tag}
