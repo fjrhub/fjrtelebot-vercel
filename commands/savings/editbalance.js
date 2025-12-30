@@ -17,9 +17,7 @@ const formatNumber = (n) => new Intl.NumberFormat("id-ID").format(n);
 KEYBOARD
 ========================= */
 const kbBack = () => ({
-  inline_keyboard: [
-    [{ text: "⬅️ Back", callback_data: "editbalance:back" }],
-  ],
+  inline_keyboard: [[{ text: "⬅️ Back", callback_data: "editbalance:back" }]],
 });
 
 const kbCancel = () => ({
@@ -59,11 +57,20 @@ const kbPaginatedGrid = (totalCount, currentPage, prefix) => {
   // Baris navigasi: Prev / Next
   const navRow = [];
   if (currentPage > 0) {
-    navRow.push({ text: "⬅️ Prev", callback_data: `editbalance:page:${currentPage - 1}` });
+    navRow.push({
+      text: "⬅️ Prev",
+      callback_data: `editbalance:page:${currentPage - 1}`,
+    });
   }
-  navRow.push({ text: `📄 ${currentPage + 1}`, callback_data: "editbalance:noop" }); // disabled
+  navRow.push({
+    text: `📄 ${currentPage + 1}`,
+    callback_data: "editbalance:noop",
+  }); // disabled
   if (end < totalCount) {
-    navRow.push({ text: "➡️ Next", callback_data: `editbalance:page:${currentPage + 1}` });
+    navRow.push({
+      text: "➡️ Next",
+      callback_data: `editbalance:page:${currentPage + 1}`,
+    });
   }
 
   if (navRow.length > 0) {
@@ -155,6 +162,7 @@ export default {
   name: "editbalance",
 
   async execute(ctx) {
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
     const rows = await fetchAllRows();
     if (rows.length === 0) {
       return ctx.reply("Tidak ada transaksi untuk diedit.");
@@ -185,7 +193,9 @@ export default {
 
     // Handle noop (halaman aktif)
     if (data === "editbalance:noop") {
-      return ctx.answerCallbackQuery({ text: `Halaman ${state.currentPage + 1}` });
+      return ctx.answerCallbackQuery({
+        text: `Halaman ${state.currentPage + 1}`,
+      });
     }
 
     if (data === "editbalance:cancel") {
@@ -201,7 +211,11 @@ export default {
       state.step = "select";
       return edit(
         "Pilih transaksi (nomor):",
-        kbPaginatedGrid(state.originalRows.length, state.currentPage || 0, "editbalance:select")
+        kbPaginatedGrid(
+          state.originalRows.length,
+          state.currentPage || 0,
+          "editbalance:select"
+        )
       );
     }
 
@@ -217,7 +231,11 @@ export default {
       state.currentPage = newPage;
       return edit(
         "Pilih transaksi (nomor):",
-        kbPaginatedGrid(state.originalRows.length, state.currentPage, "editbalance:select")
+        kbPaginatedGrid(
+          state.originalRows.length,
+          state.currentPage,
+          "editbalance:select"
+        )
       );
     }
 
@@ -320,7 +338,9 @@ Simpan perubahan?`,
       return edit(
         `✅ Transaksi dan saldo berhasil diperbarui!
 
-Jumlah diubah dari ${formatNumber(state.originalJumlah)} menjadi ${formatNumber(state.newJumlah)} ${state.mataUang}
+Jumlah diubah dari ${formatNumber(state.originalJumlah)} menjadi ${formatNumber(
+          state.newJumlah
+        )} ${state.mataUang}
 Akun: ${state.akun}`
       );
     } catch (err) {
