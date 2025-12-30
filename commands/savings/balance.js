@@ -59,6 +59,7 @@ export default {
   name: "balance",
 
   async execute(ctx) {
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
     const rows = await getAllAccounts();
 
     if (!rows.length) {
