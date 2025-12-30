@@ -165,6 +165,7 @@ export default {
   name: "addbalance",
 
   async execute(ctx) {
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
     const rows = await fetchAllRows();
 
     const msg = await ctx.reply("Pilih jenis transaksi:", {
