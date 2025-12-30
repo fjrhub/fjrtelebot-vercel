@@ -55,6 +55,7 @@ SATUAN : ${satuanValue.toFixed(3)}
 export default {
   name: "pricelist",
   async execute(ctx) {
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
     const data = await formatSheetData();
 
     // pastikan tidak melebihi limit Telegram 4096 char
