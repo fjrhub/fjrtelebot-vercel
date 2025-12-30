@@ -13,6 +13,7 @@ export default {
   // COMMAND /addprice
   // ======================
   async execute(ctx) {
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
     const userId = ctx.from.id;
 
     const msg = await ctx.reply("📝 Masukkan nama barang:");
