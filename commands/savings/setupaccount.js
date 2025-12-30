@@ -108,6 +108,7 @@ export default {
   name: "setupaccount",
 
   async execute(ctx) {
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
     const rows = await fetchAllRows();
 
     const msg = await ctx.reply("Pilih akun yang ingin diset saldo awalnya:", {
