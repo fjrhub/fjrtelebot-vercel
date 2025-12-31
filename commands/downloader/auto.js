@@ -202,7 +202,7 @@ export default {
 
         const caption = `${statsText}`;
 
-        // Jika foto
+        // If the photo
         if (photos.length > 0) {
           const groups = chunkArray(
             photos.map((p) => p.url),
