@@ -374,7 +374,7 @@ export default {
         const videos = mediaList.filter((m) => m.type === "video" && m.url);
         const images = mediaList.filter((m) => m.type === "image" && m.url);
 
-        // Kirim video jika ada
+        // Send video if any
         if (videos.length > 0) {
           await ctx.api.sendVideo(chatId, videos[0].url, {
             supports_streaming: true,
