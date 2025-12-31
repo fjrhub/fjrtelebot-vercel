@@ -156,7 +156,7 @@ export default {
           return;
         }
 
-        // Jika ada video
+        // If there is a video
         if (data.media?.play && md.durasi > 0) {
           try {
             await ctx.api.sendVideo(chatId, data.media.play, {
