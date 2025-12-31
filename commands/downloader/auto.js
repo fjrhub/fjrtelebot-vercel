@@ -318,7 +318,7 @@ export default {
         const result =
           data.result && typeof data.result === "object" ? data.result : data;
 
-        // 🔹 Ambil semua URL media
+        // 🔹 Fetch all media URLs
         const mediaUrls = Array.isArray(result.url)
           ? result.url.filter(Boolean)
           : typeof result.url === "string"
