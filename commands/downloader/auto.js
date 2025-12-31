@@ -339,7 +339,7 @@ export default {
           comments
         )}`;
 
-        // 🔹 Jika formatnya video
+        // 🔹 
         if (isVideo) {
           await ctx.api.sendVideo(chatId, mediaUrls[0], {
             caption,
