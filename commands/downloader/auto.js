@@ -170,7 +170,7 @@ export default {
               err.description || err.message
             );
           }
-          return; // tanpa delay di bagian video
+          return; // without delay in the video section
         }
 
         throw new Error("API 2 returned no valid downloadable content.");
