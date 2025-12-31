@@ -526,7 +526,7 @@ export default {
 
             const data =
               res.result || res.data?.result || res.data?.data || res.data;
-            if (!data) throw new Error("Data kosong");
+            if (!data) throw new Error("Empty data");
 
             if (!sent) {
               sent = true;
