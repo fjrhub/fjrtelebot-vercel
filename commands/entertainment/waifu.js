@@ -3,70 +3,53 @@ import { createUrl } from "../../utils/api.js";
 
 export default {
   name: "waifu",
-  description: "Fetch random waifu image with API fallback",
+  description: "Get a random waifu image from two fallback APIs",
   async execute(ctx) {
     const chatId = ctx.chat.id;
-    let progressMsg = null;
 
-    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    let statusMessage = null;
 
-    const updateProgress = async (text) => {
-      if (!progressMsg) {
-        progressMsg = await ctx.reply(text);
+    const sendOrEditStatus = async (text) => {
+      if (!statusMessage) {
+        statusMessage = await ctx.reply(text);
       } else {
-        await ctx.api.editMessageText(
-          chatId,
-          progressMsg.message_id,
-          text
-        );
+        await ctx.api.editMessageText(chatId, statusMessage.message_id, text);
       }
     };
 
-    const clearProgress = async () => {
-      if (!progressMsg) return;
-      await delay(1000);
-      await ctx.api.deleteMessage(chatId, progressMsg.message_id);
-      progressMsg = null;
+    const deleteStatus = async () => {
+      if (statusMessage) {
+        await new Promise((res) => setTimeout(res, 1000));
+        await ctx.api.deleteMessage(chatId, statusMessage.message_id);
+        statusMessage = null;
+      }
     };
 
-    const sendImage = async (imageUrl) => {
-      await ctx.replyWithPhoto(imageUrl);
-      await clearProgress();
-    };
-
-    const fetchFromApi1 = async () => {
-      await updateProgress("📡 Fetching from API #1...");
-      const res = await axios.get(
-        createUrl("waifupics", "/sfw/waifu"),
-        { timeout: 8000 }
-      );
-
-      const url = res?.data?.url;
-      if (!url) throw new Error("Invalid response from API 1");
-      return url;
-    };
-
-    const fetchFromApi2 = async () => {
-      await updateProgress("📡 Fetching from API #2...");
-      const res = await axios.get(
-        createUrl("waifuim", "/search?included_tags=waifu"),
-        { timeout: 8000 }
-      );
-
-      const url = res?.data?.images?.[0]?.url;
-      if (!url) throw new Error("Invalid response from API 2");
-      return url;
+    const sendPhoto = async (url) => {
+      await ctx.replyWithPhoto(url);
+      await deleteStatus();
     };
 
     try {
-      const image = await fetchFromApi1();
-      await sendImage(image);
+      await sendOrEditStatus("📡 Trying API 1...");
+      const res1 = await axios.get(createUrl("waifupics", "/sfw/waifu"), {
+        timeout: 8000,
+      });
+      const imageUrl1 = res1.data?.url;
+      if (!imageUrl1) throw new Error("API 1 returned an invalid response.");
+      await sendPhoto(imageUrl1);
     } catch {
       try {
-        const image = await fetchFromApi2();
-        await sendImage(image);
+        await sendOrEditStatus("📡 Trying API 2...");
+        const res2 = await axios.get(
+          createUrl("waifuim", "/search?included_tags=waifu"),
+          { timeout: 8000 }
+        );
+        const imageUrl2 = res2.data?.images?.[0]?.url;
+        if (!imageUrl2) throw new Error("API 2 returned an invalid response.");
+        await sendPhoto(imageUrl2);
       } catch {
-        await updateProgress("❌ Unable to fetch waifu image.");
+        await sendOrEditStatus("❌ Failed to fetch images from both APIs.");
       }
     }
   },
