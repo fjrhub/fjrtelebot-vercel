@@ -329,7 +329,7 @@ export default {
           throw new Error("API 2 returned empty or invalid URLs.");
         }
 
-        // 🔹 Ambil metadata (opsional)
+        // 🔹 Fetch metadata (optional)
         const isVideo = Boolean(result.isVideo);
         const likes = result.like || 0;
         const comments = result.comment || 0;
