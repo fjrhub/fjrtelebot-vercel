@@ -531,7 +531,7 @@ export default {
             if (!sent) {
               sent = true;
               controllers.forEach((c) => c.abort()); // stop other APIs
-              console.log(`🚀 Menggunakan: ${api.label} (${duration}s)`);
+              console.log(`🚀 Use: ${api.label} (${duration}s)`);
               await api.handler(ctx, chatId, data);
             }
           } catch (err) {
