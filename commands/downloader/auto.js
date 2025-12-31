@@ -501,7 +501,7 @@ export default {
       const validApis = apis.filter(Boolean);
       if (validApis.length === 0) return;
 
-      // === PARALLEL REQUEST + HANDLER SEKALIGUS ===
+      // === PARALLEL REQUEST + HANDLER AT ONCE ===
       let sent = false;
       const controllers = validApis.map(() => new AbortController());
 
