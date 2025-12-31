@@ -540,7 +540,7 @@ export default {
 
             const duration = ((Date.now() - start) / 1000).toFixed(2);
             console.warn(
-              `⚠️ ${api.label} gagal setelah ${duration}s: ${err.message}`
+              `⚠️ ${api.label} failed after ${duration}s: ${err.message}`
             );
           }
         })
