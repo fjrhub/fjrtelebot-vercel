@@ -358,7 +358,7 @@ export default {
           }));
 
           await ctx.api.sendMediaGroup(chatId, mediaGroup);
-          if (groups.length > 1) await delay(1500); // 
+          if (groups.length > 1) await delay(1500); // delay between batches
         }
         throw new Error("API 2 returned no valid downloadable content.");
       };
