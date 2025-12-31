@@ -334,7 +334,7 @@ export default {
         const likes = result.like || 0;
         const comments = result.comment || 0;
 
-        // 🔹 Buat caption sederhana (emoji ❤️ 💬)
+        // 🔹 Create a simple caption (emoji ❤️ 💬)
         const caption = `❤️ ${toNumberFormat(likes)}   💬 ${toNumberFormat(
           comments
         )}`;
