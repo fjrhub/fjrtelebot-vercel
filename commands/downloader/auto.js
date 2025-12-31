@@ -314,7 +314,7 @@ export default {
           );
         }
 
-        // 🔹 Deteksi struktur data (kadang pakai 'result', kadang langsung objek)
+        // 🔹 Detect data structure (sometimes using 'result', sometimes directly object)
         const result =
           data.result && typeof data.result === "object" ? data.result : data;
 
