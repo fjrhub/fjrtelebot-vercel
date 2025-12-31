@@ -106,7 +106,7 @@ export default {
             }
           }
         } catch (err) {
-          throw new Error("Handler 1 gagal memproses media.");
+          throw new Error("Handler 1 failed to process media.");
         }
       };
 
