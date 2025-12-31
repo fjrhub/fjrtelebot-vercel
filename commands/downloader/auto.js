@@ -1,7 +1,7 @@
 import axios from "axios";
 import { createUrl } from "../../utils/api.js";
 
-// === LOCK GLOBAL UNTUK MENCEGAH DOUBEL EXECUTION ===
+// === GLOBAL LOCK TO PREVENT DOUBLE EXECUTION ===
 const processingUsers = new Set();
 
 export default {
@@ -14,7 +14,7 @@ export default {
     const input = ctx.message?.text?.trim();
     if (!input) return;
 
-    // === LOCK: CEGAH DOUBEL EXECUTION ===
+    // === GLOBAL LOCK TO PREVENT DOUBLE EXECUTION ===
     if (processingUsers.has(userId)) {
       await ctx.reply(
         "⏳ Tunggu dulu, sedang memproses permintaan kamu sebelumnya..."
