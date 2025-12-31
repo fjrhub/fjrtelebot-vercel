@@ -6,6 +6,7 @@ export default {
   description: "Get a random waifu image from two fallback APIs",
   async execute(ctx) {
     const chatId = ctx.chat.id;
+
     let statusMessage = null;
 
     const sendOrEditStatus = async (text) => {
@@ -18,7 +19,7 @@ export default {
 
     const deleteStatus = async () => {
       if (statusMessage) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((res) => setTimeout(res, 1000));
         await ctx.api.deleteMessage(chatId, statusMessage.message_id);
         statusMessage = null;
       }
@@ -26,38 +27,28 @@ export default {
 
     const sendPhoto = async (url) => {
       await ctx.replyWithPhoto(url);
-      await deleteDateStatus();
-    };
-
-    const fetchFromWaifuPics = async () => {
-      const res = await axios.get(createUrl("waifupics", "/sfw/waifu"), {
-        timeout: 8000,
-      });
-      const url = res.data?.url;
-      if (!url) throw new Error("Invalid response from waifupics API");
-      return url;
-    };
-
-    const fetchFromWaifuIm = async () => {
-      const res = await axios.get(
-        createUrl("waifuim", "/search?included_tags=waifu"),
-        { timeout: 8000 }
-      );
-      const url = res.data?.images?.[0]?.url;
-      if (!url) throw new Error("Invalid response from waifu.im API");
-      return url;
+      await deleteStatus();
     };
 
     try {
       await sendOrEditStatus("📡 Trying API 1...");
-      const imageUrl = await fetchFromWaifuPics();
-      await sendPhoto(imageUrl);
-    } catch (error1) {
+      const res1 = await axios.get(createUrl("waifupics", "/sfw/waifu"), {
+        timeout: 8000,
+      });
+      const imageUrl1 = res1.data?.url;
+      if (!imageUrl1) throw new Error("API 1 returned an invalid response.");
+      await sendPhoto(imageUrl1);
+    } catch {
       try {
         await sendOrEditStatus("📡 Trying API 2...");
-        const imageUrl = await fetchFromWaifuIm();
-        await sendPhoto(imageUrl);
-      } catch (error2) {
+        const res2 = await axios.get(
+          createUrl("waifuim", "/search?included_tags=waifu"),
+          { timeout: 8000 }
+        );
+        const imageUrl2 = res2.data?.images?.[0]?.url;
+        if (!imageUrl2) throw new Error("API 2 returned an invalid response.");
+        await sendPhoto(imageUrl2);
+      } catch {
         await sendOrEditStatus("❌ Failed to fetch images from both APIs.");
       }
     }
