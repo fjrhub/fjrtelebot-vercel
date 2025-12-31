@@ -349,7 +349,7 @@ export default {
           return;
         }
 
-        const groups = chunkArray(mediaUrls, 10); // kirim per 10 agar tidak timeout
+        const groups = chunkArray(mediaUrls, 10); // 
         for (const grp of groups) {
           const mediaGroup = grp.map((url, idx) => ({
             type: "photo",
