@@ -551,7 +551,7 @@ export default {
       }
     } catch (err) {
       console.error("❌ Fatal Error:", err);
-      await ctx.reply("⚠️ Terjadi kesalahan saat memproses permintaan.");
+      await ctx.reply("⚠️ An error occurred while processing the request.");
     } finally {
       processingUsers.delete(userId);
     }
