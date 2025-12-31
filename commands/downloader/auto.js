@@ -307,7 +307,7 @@ export default {
       };
 
       const igHandler2 = async (ctx, chatId, data) => {
-        // 🔹 Validasi awal data
+        // 🔹 Initial data validation
         if (!data || typeof data !== "object") {
           throw new Error(
             "Invalid IG API 2 format: Root data missing or invalid."
