@@ -507,7 +507,7 @@ export default {
 
       await Promise.all(
         validApis.map(async (api, i) => {
-          if (sent) return; // kalau sudah ada yang sukses, lewati
+          if (sent) return; // if someone has already succeeded, skip it
 
           const controller = controllers[i];
           const start = Date.now();
