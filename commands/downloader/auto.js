@@ -547,7 +547,7 @@ export default {
       );
 
       if (!sent) {
-        await ctx.reply("⚠️ Semua API gagal merespons atau tidak valid.");
+        await ctx.reply("⚠️ All APIs failed to respond or are invalid.");
       }
     } catch (err) {
       console.error("❌ Fatal Error:", err);
