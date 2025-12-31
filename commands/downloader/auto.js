@@ -535,7 +535,7 @@ export default {
               await api.handler(ctx, chatId, data);
             }
           } catch (err) {
-            // stop log error kalau sudah ada yang sukses
+            // stop log error if there is a success
             if (sent) return;
 
             const duration = ((Date.now() - start) / 1000).toFixed(2);
