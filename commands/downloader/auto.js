@@ -268,7 +268,7 @@ export default {
           ...(thumb ? { thumbnail: thumb } : {}),
         });
 
-        // Tambahkan ini di paling akhir untuk jaga-jaga
+        // Add this at the end just in case
         throw new Error("API 3 returned no valid downloadable content.");
       };
 
