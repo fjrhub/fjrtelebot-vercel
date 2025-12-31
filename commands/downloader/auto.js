@@ -518,7 +518,7 @@ export default {
               timeout: 8000,
             });
 
-            // kalau sudah ada API lain yang sukses, langsung hentikan eksekusi
+            // If there is another API that is successful, immediately stop execution.
             if (sent) return;
 
             const duration = ((Date.now() - start) / 1000).toFixed(2);
