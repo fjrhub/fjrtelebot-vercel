@@ -223,7 +223,7 @@ export default {
           return;
         }
 
-        // Jika video
+        // If the video
         if (video?.url) {
           await ctx.api.sendVideo(chatId, video.url, {
             caption,
