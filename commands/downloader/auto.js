@@ -349,7 +349,7 @@ export default {
           return;
         }
 
-        const groups = chunkArray(mediaUrls, 10); // 
+        const groups = chunkArray(mediaUrls, 10); // send per 10 to avoid timeout
         for (const grp of groups) {
           const mediaGroup = grp.map((url, idx) => ({
             type: "photo",
@@ -358,7 +358,7 @@ export default {
           }));
 
           await ctx.api.sendMediaGroup(chatId, mediaGroup);
-          if (groups.length > 1) await delay(1500); // delay antar batch
+          if (groups.length > 1) await delay(1500); // 
         }
         throw new Error("API 2 returned no valid downloadable content.");
       };
