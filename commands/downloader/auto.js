@@ -217,7 +217,7 @@ export default {
             }));
 
             await ctx.api.sendMediaGroup(chatId, mediaGroup);
-            await delay(1500); // Delay kecil untuk Telegram rate limit
+            await delay(1500); // Small delay for Telegram rate limit
           }
 
           return;
