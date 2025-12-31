@@ -17,7 +17,7 @@ export default {
     // === GLOBAL LOCK TO PREVENT DOUBLE EXECUTION ===
     if (processingUsers.has(userId)) {
       await ctx.reply(
-        "⏳ Tunggu dulu, sedang memproses permintaan kamu sebelumnya..."
+        "⏳ Please wait, we are processing your previous request..."
       );
       return;
     }
