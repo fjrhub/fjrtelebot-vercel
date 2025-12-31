@@ -382,7 +382,7 @@ export default {
           return;
         }
 
-        // Kirim semua gambar jika tidak ada video
+        // Send all images if there is no video
         if (images.length > 0) {
           const groups = chunkArray(
             images.map((img) => img.url),
