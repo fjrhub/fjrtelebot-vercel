@@ -150,7 +150,7 @@ export default {
               );
             }
 
-            // Delay 1.5 detik antar batch kiriman foto
+            // 1.5 second delay between photo submission batches
             await delay(1500);
           }
           return;
