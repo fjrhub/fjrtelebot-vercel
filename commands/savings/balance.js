@@ -22,7 +22,13 @@ function sheetsClient() {
 ========================= */
 const formatRp = (n) => "Rp" + Math.round(n).toLocaleString("id-ID");
 
-const formatUSDT = (n) => Number(n).toFixed(2) + " USDT";
+const formatUSDT = (n) => {
+  const formattedNumber = Number(n).toLocaleString("id-ID", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+  return `${formattedNumber} USDT`;
+};
 
 function getJakartaTime() {
   const now = new Date(
