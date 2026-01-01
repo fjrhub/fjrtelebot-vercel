@@ -109,7 +109,7 @@ async function appendInitialBalance(data) {
           "System",
           0,
           data.jumlah,
-          "#initial",
+          "#Initial",
           "Initial balance",
           now,
           now,
@@ -177,7 +177,7 @@ Akun       : ${state.akun}
 Saldo Awal : *${formatAmount(state.jumlah, state.mataUang)}*
 Mata Uang  : ${state.mataUang}
 Metode     : System
-Tag        : #initial`,
+Tag        : #Initial`,
         { inline_keyboard: [] }
       );
     }
