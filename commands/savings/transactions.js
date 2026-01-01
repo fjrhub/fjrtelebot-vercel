@@ -51,6 +51,19 @@ const formatDate = (iso) => {
   });
 };
 
+const getHeaderIcon = (jenis) => {
+  switch (jenis) {
+    case "Pemasukan":
+      return "🟢";
+    case "Pengeluaran":
+      return "🔴";
+    case "Initial":
+      return "🔵";
+    default:
+      return "⚪";
+  }
+};
+
 /* =========================
    PAGINATION UI
 ========================= */
@@ -107,7 +120,7 @@ function renderPage(state) {
       dibuatPada,
     ] = r;
 
-    const headerIcon = jenis === "Pemasukan" ? "🟢​" : "🔴​";
+    const headerIcon = getHeaderIcon(jenis);
     const nomor = start + i + 1; // nomor global
 
     text +=
