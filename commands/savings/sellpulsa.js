@@ -69,7 +69,7 @@ async function appendRows(values) {
 ========================= */
 const kbList = (list, step) => ({
   inline_keyboard: list.map((v) => [
-    { text: v, callback_ `sellpulsa:${step}:${v}` },
+    { text: v, callback_data: `sellpulsa:${step}:${v}` },
   ]),
 });
 
@@ -260,11 +260,11 @@ Catatan: ${state.catatan}
 Lanjutkan?`;
 
       return edit(confirmText, {
-        inline_keyboard: [
-          [{ text: "✅ Simpan", callback_ "sellpulsa:save:ok" }],
-          [{ text: "❌ Batal", callback_data: "sellpulsa:cancel" }],
-        ],
-      });
+  inline_keyboard: [
+    [{ text: "✅ Simpan", callback_data: "sellpulsa:save:ok" }],
+    [{ text: "❌ Batal", callback_data: "sellpulsa:cancel" }],
+  ],
+});
     }
   },
 };
