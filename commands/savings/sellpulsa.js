@@ -17,13 +17,7 @@ const states = new Map();
 ========================= */
 const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
 
-const formatCurrency = (n) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(n);
-};
+const formatRupiah = (n) => "Rp" + Math.abs(n).toLocaleString("id-ID");
 
 /* =========================
    GOOGLE SHEETS
@@ -52,7 +46,7 @@ function getLastSaldo(rows, akun) {
   for (let i = rows.length - 1; i >= 0; i--) {
     if (rows[i][1] === akun) {
       return {
-        mataUang: "Rp", // selalu Rp sesuai preferensi
+        mataUang: "Rp",
         saldo: Number(rows[i][4]) || 0,
       };
     }
@@ -143,9 +137,9 @@ export default {
         return edit("❌ Saldo dompet tidak mencukupi untuk transaksi ini.");
       }
 
-      // 🔁 URUTAN: PENGELUARAN DULU (kirim pulsa), BARU PEMASUKAN (terima uang)
+      // 🔁 URUTAN: PENGELUARAN DULU (kirim ke pembeli = Transfer), lalu PEMASUKAN (masuk ke dompet = Cash)
       const entries = [
-        // 1. Pengeluaran dari dompet (Cash)
+        // 1. Pengeluaran → Transfer (kirim pulsa via e-wallet)
         [
           "Pengeluaran",
           "Usaha",
@@ -154,7 +148,7 @@ export default {
           state.jumlahKeluar,
           "Rp",
           state.akunKeluar,
-          "Cash", // dompet = tunai
+          "Transfer", // keluar ke pembeli = transfer
           akunKeluarInfo.saldo,
           akunKeluarInfo.saldo - state.jumlahKeluar,
           state.tag,
@@ -162,7 +156,7 @@ export default {
           now,
           now,
         ],
-        // 2. Pemasukan dari pembeli (Transfer)
+        // 2. Pemasukan → Cash (uang masuk ke dompet kamu)
         [
           "Pemasukan",
           "Usaha",
@@ -171,7 +165,7 @@ export default {
           state.jumlahMasuk,
           "Rp",
           state.akunMasuk,
-          "Transfer", // pembayaran digital
+          "Cash", // masuk ke dompet = cash
           akunMasukInfo.saldo,
           akunMasukInfo.saldo + state.jumlahMasuk,
           state.tag,
@@ -183,20 +177,18 @@ export default {
 
       await appendRows(entries);
 
-      // ✅ Detail sukses untuk audit
+      // ✅ Detail sukses tanpa emoji, format Rp10.000
       const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
       const successText = `✅ Transaksi jual pulsa berhasil disimpan!
 
 🧾 DETAIL:
 Deskripsi: ${state.deskripsi}
-Pembeli bayar: ${formatCurrency(state.jumlahMasuk)}
-Kamu keluarkan: ${formatCurrency(state.jumlahKeluar)}
-Keuntungan: ${keuntungan >= 0 ? "✅ " : "⚠️ "} ${formatCurrency(
-        Math.abs(keuntungan)
-      )}
+Pembeli bayar: ${formatRupiah(state.jumlahMasuk)}
+Kamu keluarkan: ${formatRupiah(state.jumlahKeluar)}
+Keuntungan: ${formatRupiah(keuntungan)}
 
-Akun Masuk: ${state.akunMasuk} (Transfer)
-Akun Keluar: ${state.akunKeluar} (Cash)
+Akun Masuk: ${state.akunMasuk} (Cash)
+Akun Keluar: ${state.akunKeluar} (Transfer)
 
 Tag: ${state.tag}
 Catatan: ${state.catatan}`;
@@ -250,16 +242,16 @@ Catatan: ${state.catatan}`;
       state.catatan = ctx.message.text;
       state.step = "confirm";
 
+      const akunMasukInfo = getLastSaldo(state.rows, state.akunMasuk);
+      const akunKeluarInfo = getLastSaldo(state.rows, state.akunKeluar);
       const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
 
       const confirmText = `🧾 KONFIRMASI JUAL PULSA
 
 Deskripsi: ${state.deskripsi}
-Pembeli bayar: ${formatCurrency(state.jumlahMasuk)}
-Kamu keluarkan: ${formatCurrency(state.jumlahKeluar)}
-Keuntungan: ${keuntungan >= 0 ? "✅ " : "⚠️ "} ${formatCurrency(
-        Math.abs(keuntungan)
-      )}
+Pembeli bayar: ${formatRupiah(state.jumlahMasuk)}
+Kamu keluarkan: ${formatRupiah(state.jumlahKeluar)}
+Keuntungan: ${formatRupiah(keuntungan)}
 
 Akun Masuk: ${state.akunMasuk}
 Akun Keluar: ${state.akunKeluar}
