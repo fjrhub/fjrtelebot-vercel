@@ -52,7 +52,7 @@ async function getAllAccounts() {
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet1!S2:U", // S=Account | T=Saldo | U=MataUang
+    range: "Sheet2!A2:C", // S=Account | T=Saldo | U=MataUang
   });
 
   return res.data.values || [];
