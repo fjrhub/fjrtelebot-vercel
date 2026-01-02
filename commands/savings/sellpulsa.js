@@ -69,7 +69,7 @@ async function appendRows(values) {
 ========================= */
 const kbList = (list, step) => ({
   inline_keyboard: list.map((v) => [
-    { text: v, callback_data: `sellpulsa:${step}:${v}` },
+    { text: v, callback_ `sellpulsa:${step}:${v}` },
   ]),
 });
 
@@ -131,34 +131,17 @@ export default {
         return edit("❌ Saldo dompet tidak mencukupi untuk transaksi ini.");
       }
 
-      // Tentukan metode berdasarkan akun
+      // Tentukan metode
       const metodeMasuk = state.akunMasuk === "Cash" ? "Cash" : "Transfer";
       const metodeKeluar = state.akunKeluar === "Cash" ? "Cash" : "Transfer";
 
-      // Simpan 2 entri: pemasukan + pengeluaran
-      await appendRows([
-        // Pemasukan: uang dari pembeli
-        [
-          "Pemasukan",
-          "Penjualan",
-          "Pulsa",
-          state.deskripsi,
-          state.jumlahMasuk,
-          akunMasukInfo.mataUang,
-          state.akunMasuk,
-          metodeMasuk,
-          akunMasukInfo.saldo,
-          akunMasukInfo.saldo + state.jumlahMasuk,
-          state.tag,
-          state.catatan,
-          now,
-          now,
-        ],
-        // Pengeluaran: pulsa dikirim dari dompet
+      // 🔁 URUTAN: PENGELUARAN DULU, BARU PEMASUKAN
+      const entries = [
+        // 1. Pengeluaran: kirim pulsa ke pembeli
         [
           "Pengeluaran",
+          "Usaha",
           "Penjualan",
-          "Pulsa",
           state.deskripsi,
           state.jumlahKeluar,
           akunKeluarInfo.mataUang,
@@ -171,10 +154,45 @@ export default {
           now,
           now,
         ],
-      ]);
+        // 2. Pemasukan: terima uang dari pembeli
+        [
+          "Pemasukan",
+          "Usaha",
+          "Penjualan",
+          state.deskripsi,
+          state.jumlahMasuk,
+          akunMasukInfo.mataUang,
+          state.akunMasuk,
+          metodeMasuk,
+          akunMasukInfo.saldo,
+          akunMasukInfo.saldo + state.jumlahMasuk,
+          state.tag,
+          state.catatan,
+          now,
+          now,
+        ],
+      ];
+
+      await appendRows(entries);
+
+      // ✅ TAMPILKAN DETAIL SETELAH BERHASIL (untuk audit)
+      const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
+      const successText = `✅ Transaksi jual pulsa berhasil disimpan!
+
+🧾 DETAIL:
+Deskripsi: ${state.deskripsi}
+Pembeli bayar: ${format(state.jumlahMasuk)} ${akunMasukInfo.mataUang}
+Kamu keluarkan: ${format(state.jumlahKeluar)} ${akunKeluarInfo.mataUang}
+Keuntungan: ${keuntungan >= 0 ? "✅ " : "⚠️ "} ${format(Math.abs(keuntungan))} ${akunMasukInfo.mataUang}
+
+Akun Masuk: ${state.akunMasuk} (${metodeMasuk})
+Akun Keluar: ${state.akunKeluar} (${metodeKeluar})
+
+Tag: ${state.tag}
+Catatan: ${state.catatan}`;
 
       states.delete(ctx.from.id);
-      return edit("✅ Transaksi jual pulsa berhasil disimpan!");
+      return edit(successText);
     }
 
     if (step === "cancel") {
@@ -243,7 +261,7 @@ Lanjutkan?`;
 
       return edit(confirmText, {
         inline_keyboard: [
-          [{ text: "✅ Simpan", callback_data: "sellpulsa:save:ok" }],
+          [{ text: "✅ Simpan", callback_ "sellpulsa:save:ok" }],
           [{ text: "❌ Batal", callback_data: "sellpulsa:cancel" }],
         ],
       });
