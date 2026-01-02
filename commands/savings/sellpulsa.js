@@ -131,9 +131,13 @@ export default {
         return edit("❌ Saldo dompet tidak mencukupi untuk transaksi ini.");
       }
 
-      // Simpan 2 entri: pemasukan (dari pembeli) + pengeluaran (pulsa dikirim)
+      // Tentukan metode berdasarkan akun
+      const metodeMasuk = state.akunMasuk === "Cash" ? "Cash" : "Transfer";
+      const metodeKeluar = state.akunKeluar === "Cash" ? "Cash" : "Transfer";
+
+      // Simpan 2 entri: pemasukan + pengeluaran
       await appendRows([
-        // Pemasukan: uang masuk
+        // Pemasukan: uang dari pembeli
         [
           "Pemasukan",
           "Penjualan",
@@ -142,7 +146,7 @@ export default {
           state.jumlahMasuk,
           akunMasukInfo.mataUang,
           state.akunMasuk,
-          "Penjualan Pulsa",
+          metodeMasuk,
           akunMasukInfo.saldo,
           akunMasukInfo.saldo + state.jumlahMasuk,
           state.tag,
@@ -150,16 +154,16 @@ export default {
           now,
           now,
         ],
-        // Pengeluaran: pulsa dikeluarkan
+        // Pengeluaran: pulsa dikirim dari dompet
         [
           "Pengeluaran",
-          "Pulsa",
           "Penjualan",
+          "Pulsa",
           state.deskripsi,
           state.jumlahKeluar,
           akunKeluarInfo.mataUang,
           state.akunKeluar,
-          "Pulsa Terjual",
+          metodeKeluar,
           akunKeluarInfo.saldo,
           akunKeluarInfo.saldo - state.jumlahKeluar,
           state.tag,
