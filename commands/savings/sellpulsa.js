@@ -17,7 +17,13 @@ const states = new Map();
 ========================= */
 const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
 
-const format = (n) => new Intl.NumberFormat("id-ID").format(n);
+const formatCurrency = (n) => {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 0,
+  }).format(n);
+};
 
 /* =========================
    GOOGLE SHEETS
@@ -46,7 +52,7 @@ function getLastSaldo(rows, akun) {
   for (let i = rows.length - 1; i >= 0; i--) {
     if (rows[i][1] === akun) {
       return {
-        mataUang: rows[i][0] || "Rp",
+        mataUang: "Rp", // selalu Rp sesuai preferensi
         saldo: Number(rows[i][4]) || 0,
       };
     }
@@ -82,9 +88,12 @@ export default {
   async execute(ctx) {
     const rows = await fetchAllRows();
 
-    const msg = await ctx.reply("🔁 Jual Pulsa / Top-up\n\nPilih akun penerima pembayaran:", {
-      reply_markup: kbList(OPTIONS.akun, "akunMasuk"),
-    });
+    const msg = await ctx.reply(
+      "🔁 Jual Pulsa / Top-up\n\nPilih akun penerima pembayaran:",
+      {
+        reply_markup: kbList(OPTIONS.akun, "akunMasuk"),
+      }
+    );
 
     states.set(ctx.from.id, {
       step: "akunMasuk",
@@ -112,7 +121,10 @@ export default {
     if (step === "akunMasuk") {
       state.akunMasuk = value;
       state.step = "akunKeluar";
-      return edit("Pilih akun pengeluaran (dompet pulsa):", kbList(OPTIONS.akun, "akunKeluar"));
+      return edit(
+        "Pilih akun pengeluaran (dompet pulsa):",
+        kbList(OPTIONS.akun, "akunKeluar")
+      );
     }
 
     if (step === "akunKeluar") {
@@ -131,22 +143,18 @@ export default {
         return edit("❌ Saldo dompet tidak mencukupi untuk transaksi ini.");
       }
 
-      // Tentukan metode
-      const metodeMasuk = state.akunMasuk === "Cash" ? "Cash" : "Transfer";
-      const metodeKeluar = state.akunKeluar === "Cash" ? "Cash" : "Transfer";
-
-      // 🔁 URUTAN: PENGELUARAN DULU, BARU PEMASUKAN
+      // 🔁 URUTAN: PENGELUARAN DULU (kirim pulsa), BARU PEMASUKAN (terima uang)
       const entries = [
-        // 1. Pengeluaran: kirim pulsa ke pembeli
+        // 1. Pengeluaran dari dompet (Cash)
         [
           "Pengeluaran",
           "Usaha",
           "Penjualan",
           state.deskripsi,
           state.jumlahKeluar,
-          akunKeluarInfo.mataUang,
+          "Rp",
           state.akunKeluar,
-          metodeKeluar,
+          "Cash", // dompet = tunai
           akunKeluarInfo.saldo,
           akunKeluarInfo.saldo - state.jumlahKeluar,
           state.tag,
@@ -154,16 +162,16 @@ export default {
           now,
           now,
         ],
-        // 2. Pemasukan: terima uang dari pembeli
+        // 2. Pemasukan dari pembeli (Transfer)
         [
           "Pemasukan",
           "Usaha",
           "Penjualan",
           state.deskripsi,
           state.jumlahMasuk,
-          akunMasukInfo.mataUang,
+          "Rp",
           state.akunMasuk,
-          metodeMasuk,
+          "Transfer", // pembayaran digital
           akunMasukInfo.saldo,
           akunMasukInfo.saldo + state.jumlahMasuk,
           state.tag,
@@ -175,18 +183,20 @@ export default {
 
       await appendRows(entries);
 
-      // ✅ TAMPILKAN DETAIL SETELAH BERHASIL (untuk audit)
+      // ✅ Detail sukses untuk audit
       const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
       const successText = `✅ Transaksi jual pulsa berhasil disimpan!
 
 🧾 DETAIL:
 Deskripsi: ${state.deskripsi}
-Pembeli bayar: ${format(state.jumlahMasuk)} ${akunMasukInfo.mataUang}
-Kamu keluarkan: ${format(state.jumlahKeluar)} ${akunKeluarInfo.mataUang}
-Keuntungan: ${keuntungan >= 0 ? "✅ " : "⚠️ "} ${format(Math.abs(keuntungan))} ${akunMasukInfo.mataUang}
+Pembeli bayar: ${formatCurrency(state.jumlahMasuk)}
+Kamu keluarkan: ${formatCurrency(state.jumlahKeluar)}
+Keuntungan: ${keuntungan >= 0 ? "✅ " : "⚠️ "} ${formatCurrency(
+        Math.abs(keuntungan)
+      )}
 
-Akun Masuk: ${state.akunMasuk} (${metodeMasuk})
-Akun Keluar: ${state.akunKeluar} (${metodeKeluar})
+Akun Masuk: ${state.akunMasuk} (Transfer)
+Akun Keluar: ${state.akunKeluar} (Cash)
 
 Tag: ${state.tag}
 Catatan: ${state.catatan}`;
@@ -240,16 +250,16 @@ Catatan: ${state.catatan}`;
       state.catatan = ctx.message.text;
       state.step = "confirm";
 
-      const akunMasukInfo = getLastSaldo(state.rows, state.akunMasuk);
-      const akunKeluarInfo = getLastSaldo(state.rows, state.akunKeluar);
       const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
 
       const confirmText = `🧾 KONFIRMASI JUAL PULSA
 
 Deskripsi: ${state.deskripsi}
-Pembeli bayar: ${format(state.jumlahMasuk)} ${akunMasukInfo.mataUang}
-Kamu keluarkan: ${format(state.jumlahKeluar)} ${akunKeluarInfo.mataUang}
-Keuntungan: ${keuntungan >= 0 ? "✅ " : "⚠️ "} ${format(Math.abs(keuntungan))} ${akunMasukInfo.mataUang}
+Pembeli bayar: ${formatCurrency(state.jumlahMasuk)}
+Kamu keluarkan: ${formatCurrency(state.jumlahKeluar)}
+Keuntungan: ${keuntungan >= 0 ? "✅ " : "⚠️ "} ${formatCurrency(
+        Math.abs(keuntungan)
+      )}
 
 Akun Masuk: ${state.akunMasuk}
 Akun Keluar: ${state.akunKeluar}
@@ -260,11 +270,11 @@ Catatan: ${state.catatan}
 Lanjutkan?`;
 
       return edit(confirmText, {
-  inline_keyboard: [
-    [{ text: "✅ Simpan", callback_data: "sellpulsa:save:ok" }],
-    [{ text: "❌ Batal", callback_data: "sellpulsa:cancel" }],
-  ],
-});
+        inline_keyboard: [
+          [{ text: "✅ Simpan", callback_data: "sellpulsa:save:ok" }],
+          [{ text: "❌ Batal", callback_data: "sellpulsa:cancel" }],
+        ],
+      });
     }
   },
 };
