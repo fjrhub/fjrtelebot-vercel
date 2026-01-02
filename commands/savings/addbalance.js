@@ -51,19 +51,36 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
+
+// input user → USDT asli
+const parseInputAmount = (text) => {
+  if (!text) return 0;
+  return Number(String(text).replace(",", "."));
+};
+
+// dari spreadsheet (×1000) → USDT
+const sheetToUSDT = (value) => {
+  return Number(value || 0) / 1000;
+};
+
+// USDT → spreadsheet (×1000, integer)
+const usdtToSheet = (amount) => {
+  return Math.round(Number(amount) * 1000);
+};
 
 const formatAmount = (amount, currency) => {
   if (currency === "USDT") {
-    // USDT biasanya ditampilkan dengan 2 desimal atau tanpa koma ribuan
-    return `${Number(amount).toFixed(2)} USDT`;
-  } else if (currency === "Rp") {
-    // Format Rupiah: Rp1.000 atau Rp1.000.000
-    return `Rp${new Intl.NumberFormat("id-ID").format(Math.round(amount))}`;
-  } else {
-    // fallback jika ada mata uang lain
-    return `${currency}${new Intl.NumberFormat("id-ID").format(amount)}`;
+    return `${Number(amount).toLocaleString("id-ID", {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    })} USDT`;
   }
+
+  if (currency === "Rp") {
+    return `Rp${new Intl.NumberFormat("id-ID").format(Math.round(amount))}`;
+  }
+
+  return `${amount} ${currency}`;
 };
 
 /* =========================
@@ -120,7 +137,7 @@ function getLastFromCache(rows, akun) {
     if (rows[i][1] === akun) {
       return {
         mataUang: rows[i][0] || null,
-        saldo: Number(rows[i][4]) || 0,
+        saldo: sheetToUSDT(rows[i][4]), // ⬅️ FIX
       };
     }
   }
@@ -142,12 +159,12 @@ async function appendTransaction(data) {
           data.kategori,
           data.subKategori,
           data.deskripsi,
-          data.jumlah,
+          usdtToSheet(data.jumlah),          // ⬅️ FIX
           data.mataUang,
           data.akun,
           data.metode,
-          data.saldoSebelum,
-          data.saldoSesudah,
+          usdtToSheet(data.saldoSebelum),    // ⬅️ FIX
+          usdtToSheet(data.saldoSesudah),    // ⬅️ FIX
           data.tag,
           data.catatan,
           now,
@@ -256,7 +273,7 @@ Tag: ${state.tag || "-"}`
       state.deskripsi = ctx.message.text;
       state.step = "jumlah";
     } else if (state.step === "jumlah") {
-      state.jumlah = toNumber(ctx.message.text);
+      state.jumlah = parseInputAmount(ctx.message.text); // ⬅️ FIX
       state.step = "akun";
     } else if (state.step === "tag") {
       state.tag = ctx.message.text;
