@@ -5,7 +5,6 @@ import { google } from "googleapis";
 ========================= */
 const OPTIONS = {
   jenis: ["Pemasukan", "Pengeluaran", "Transfer"],
-
   kategori: {
     Pengeluaran: [
       "Makanan",
@@ -17,7 +16,6 @@ const OPTIONS = {
     ],
     Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
   },
-
   subKategori: {
     Pengeluaran: {
       Makanan: ["Makan Harian", "Jajan", "Kopi"],
@@ -27,7 +25,6 @@ const OPTIONS = {
       Pendidikan: ["Kursus", "Buku"],
       Belanja: ["Online", "Offline", "Langganan"],
     },
-
     Pemasukan: {
       Gaji: ["Gaji Bulanan", "Bonus", "THR"],
       Usaha: ["Penjualan", "Jasa", "Komisi"],
@@ -37,7 +34,6 @@ const OPTIONS = {
       Lainnya: ["Uang Saku", "Bantuan", "Pemasukan Lain"],
     },
   },
-
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo", "Gopay"],
   metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
   mataUang: ["Rp", "USDT"],
@@ -52,20 +48,27 @@ const states = new Map();
    UTIL
 ========================= */
 
-// input user → USDT asli
+// input user → angka asli (menghapus titik pemisah ribuan)
 const parseInputAmount = (text) => {
   if (!text) return 0;
-  return Number(String(text).replace(",", "."));
+  const cleanedText = String(text).replace(/\./g, "").replace(",", ".");
+  return Number(cleanedText);
 };
 
-// dari spreadsheet (×1000) → USDT
-const sheetToUSDT = (value) => {
-  return Number(value || 0) / 1000;
+// dari spreadsheet → USDT atau Rp
+const sheetToAmount = (value, currency) => {
+  if (currency === "USDT") {
+    return Number(value || 0) / 1000;
+  }
+  return Number(value || 0);
 };
 
-// USDT → spreadsheet (×1000, integer)
-const usdtToSheet = (amount) => {
-  return Math.round(Number(amount) * 1000);
+// USDT atau Rp → spreadsheet
+const amountToSheet = (amount, currency) => {
+  if (currency === "USDT") {
+    return Math.round(Number(amount) * 1000);
+  }
+  return Math.round(Number(amount));
 };
 
 const formatAmount = (amount, currency) => {
@@ -75,11 +78,9 @@ const formatAmount = (amount, currency) => {
       maximumFractionDigits: 3,
     })} USDT`;
   }
-
   if (currency === "Rp") {
     return `Rp${new Intl.NumberFormat("id-ID").format(Math.round(amount))}`;
   }
-
   return `${amount} ${currency}`;
 };
 
@@ -119,7 +120,6 @@ function sheetsClient() {
     },
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
-
   return google.sheets({ version: "v4", auth });
 }
 
@@ -135,10 +135,9 @@ async function fetchAllRows() {
 function getLastFromCache(rows, akun) {
   for (let i = rows.length - 1; i >= 0; i--) {
     if (rows[i][1] === akun) {
-      return {
-        mataUang: rows[i][0] || null,
-        saldo: sheetToUSDT(rows[i][4]), // ⬅️ FIX
-      };
+      const mataUang = rows[i][0] || null;
+      const saldo = sheetToAmount(rows[i][4], mataUang);
+      return { mataUang, saldo };
     }
   }
   return { saldo: 0, mataUang: null };
@@ -147,7 +146,6 @@ function getLastFromCache(rows, akun) {
 async function appendTransaction(data) {
   const sheets = sheetsClient();
   const now = new Date().toISOString();
-
   await sheets.spreadsheets.values.append({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: "Sheet1!A:O",
@@ -159,12 +157,12 @@ async function appendTransaction(data) {
           data.kategori,
           data.subKategori,
           data.deskripsi,
-          usdtToSheet(data.jumlah),          // ⬅️ FIX
+          amountToSheet(data.jumlah, data.mataUang),
           data.mataUang,
           data.akun,
           data.metode,
-          usdtToSheet(data.saldoSebelum),    // ⬅️ FIX
-          usdtToSheet(data.saldoSesudah),    // ⬅️ FIX
+          amountToSheet(data.saldoSebelum, data.mataUang),
+          amountToSheet(data.saldoSesudah, data.mataUang),
           data.tag,
           data.catatan,
           now,
@@ -184,11 +182,9 @@ export default {
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
     const rows = await fetchAllRows();
-
     const msg = await ctx.reply("Pilih jenis transaksi:", {
       reply_markup: kbJenisAwal(),
     });
-
     states.set(ctx.from.id, {
       step: "jenis",
       history: [],
@@ -201,7 +197,6 @@ export default {
   async handleCallback(ctx) {
     const state = states.get(ctx.from.id);
     if (!state) return;
-
     const data = ctx.callbackQuery.data;
     const edit = (text, kb) =>
       ctx.api.editMessageText(state.chatId, state.messageId, text, {
@@ -221,18 +216,16 @@ export default {
     if (data === "addbalance:save") {
       await appendTransaction(state);
       states.delete(ctx.from.id);
-
       return edit(
-        `✅ Transaksi berhasil disimpan!
-
-Jenis: ${state.jenis}
-Kategori: ${state.kategori}
-Sub: ${state.subKategori}
-Deskripsi: ${state.deskripsi}
-Jumlah: ${formatAmount(state.jumlah, state.mataUang)}
-Akun: ${state.akun}
-Metode: ${state.metode}
-Tag: ${state.tag || "-"}`
+        `✅ Transaksi berhasil disimpan!\n\n` +
+        `Jenis: ${state.jenis}\n` +
+        `Kategori: ${state.kategori}\n` +
+        `Sub: ${state.subKategori}\n` +
+        `Deskripsi: ${state.deskripsi}\n` +
+        `Jumlah: ${formatAmount(state.jumlah, state.mataUang)}\n` +
+        `Akun: ${state.akun}\n` +
+        `Metode: ${state.metode}\n` +
+        `Tag: ${state.tag || "-"}`,
       );
     }
 
@@ -243,10 +236,8 @@ Tag: ${state.tag || "-"}`
     if (step === "akun") {
       const { saldo, mataUang } = getLastFromCache(state.rows, value);
       state.saldoSebelum = saldo;
-
       state.step = mataUang ? "metode" : "mataUang";
       if (mataUang) state.mataUang = mataUang;
-
       return this.render(ctx, state);
     }
 
@@ -257,7 +248,6 @@ Tag: ${state.tag || "-"}`
       mataUang: "metode",
       metode: "tag",
     };
-
     state.step = flow[step];
     return this.render(ctx, state);
   },
@@ -265,7 +255,6 @@ Tag: ${state.tag || "-"}`
   async handleText(ctx) {
     const state = states.get(ctx.from.id);
     if (!state) return;
-
     await ctx.deleteMessage().catch(() => {});
     state.history.push(state.step);
 
@@ -273,7 +262,7 @@ Tag: ${state.tag || "-"}`
       state.deskripsi = ctx.message.text;
       state.step = "jumlah";
     } else if (state.step === "jumlah") {
-      state.jumlah = parseInputAmount(ctx.message.text); // ⬅️ FIX
+      state.jumlah = parseInputAmount(ctx.message.text);
       state.step = "akun";
     } else if (state.step === "tag") {
       state.tag = ctx.message.text;
@@ -281,13 +270,11 @@ Tag: ${state.tag || "-"}`
     } else if (state.step === "catatan") {
       state.catatan = ctx.message.text;
       state.step = "confirm";
-
       state.saldoSesudah =
         state.jenis === "Pemasukan"
           ? state.saldoSebelum + state.jumlah
           : state.saldoSebelum - state.jumlah;
     }
-
     return this.render(ctx, state);
   },
 
@@ -300,70 +287,58 @@ Tag: ${state.tag || "-"}`
     switch (state.step) {
       case "jenis":
         return edit("Pilih jenis transaksi:", kbJenisAwal());
-
       case "kategori":
         return edit(
           "Pilih kategori:",
-          kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori")
+          kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori"),
         );
-
       case "subKategori":
         return edit(
           "Pilih sub kategori:",
           kbList(
             OPTIONS.subKategori[state.jenis][state.kategori],
-            "addbalance:subKategori"
-          )
+            "addbalance:subKategori",
+          ),
         );
-
       case "deskripsi":
         return edit("Masukkan deskripsi:", kbText());
-
       case "jumlah":
         return edit("Masukkan jumlah:", kbText());
-
       case "akun":
         return edit("Pilih akun:", kbList(OPTIONS.akun, "addbalance:akun"));
-
       case "mataUang":
         return edit(
           "Pilih mata uang:",
-          kbList(OPTIONS.mataUang, "addbalance:mataUang")
+          kbList(OPTIONS.mataUang, "addbalance:mataUang"),
         );
-
       case "metode":
         return edit(
           "Pilih metode:",
-          kbList(OPTIONS.metode, "addbalance:metode")
+          kbList(OPTIONS.metode, "addbalance:metode"),
         );
-
       case "tag":
         return edit("Masukkan tag:", kbText());
-
       case "catatan":
         return edit("Masukkan catatan:", kbText());
-
       case "confirm":
         return edit(
-          `🧾 Konfirmasi Transaksi
-
-Jenis: ${state.jenis}
-Kategori: ${state.kategori}
-Sub: ${state.subKategori}
-Deskripsi: ${state.deskripsi}
-Jumlah: ${formatAmount(state.jumlah, state.mataUang)}
-Akun: ${state.akun}
-Metode: ${state.metode}
-Tag: ${state.tag}
-
-Lanjutkan?`,
+          `🧾 Konfirmasi Transaksi\n\n` +
+          `Jenis: ${state.jenis}\n` +
+          `Kategori: ${state.kategori}\n` +
+          `Sub: ${state.subKategori}\n` +
+          `Deskripsi: ${state.deskripsi}\n` +
+          `Jumlah: ${formatAmount(state.jumlah, state.mataUang)}\n` +
+          `Akun: ${state.akun}\n` +
+          `Metode: ${state.metode}\n` +
+          `Tag: ${state.tag || "-"}\n\n` +
+          `Lanjutkan?`,
           {
             inline_keyboard: [
               [{ text: "✅ Simpan", callback_data: "addbalance:save" }],
               [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
               [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
             ],
-          }
+          },
         );
     }
   },
