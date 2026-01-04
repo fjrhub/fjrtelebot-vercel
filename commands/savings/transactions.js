@@ -3,7 +3,7 @@ import { google } from "googleapis";
 /* =========================
    CONFIG
 ========================= */
-const LIMIT = 30;
+const LIMIT = 15;
 const states = new Map();
 
 /* =========================
