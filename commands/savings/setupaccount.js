@@ -16,15 +16,12 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-
-// ✅ SUPPORT: 29.881 / 29,881 / 29881
 const toNumber = (v) =>
   Number(String(v).replace(/\./g, "").replace(",", "."));
 
 const formatNumber = (n) =>
   new Intl.NumberFormat("id-ID").format(n);
 
-// ✅ FIX UTAMA (USDT PAKAI PEMISAH RIBUAN)
 const formatAmount = (amount, currency) => {
   if (currency === "Rp") {
     return `Rp${formatNumber(amount)}`;
@@ -32,8 +29,8 @@ const formatAmount = (amount, currency) => {
   return `${formatNumber(amount)} ${currency}`;
 };
 
-// Keyboard generator
-const kbList = (list, prefix, perRow = 2) => {
+// ✅ Keyboard dengan opsi back/cancel
+const kbList = (list, prefix, perRow = 2, showBack = false, showCancel = false) => {
   const keyboard = [];
   for (let i = 0; i < list.length; i += perRow) {
     keyboard.push(
@@ -43,10 +40,29 @@ const kbList = (list, prefix, perRow = 2) => {
       }))
     );
   }
+  const footer = [];
+  if (showBack) footer.push({ text: "⬅️ Back", callback_data: "setupaccount:back" });
+  if (showCancel) footer.push({ text: "❌ Cancel", callback_data: "setupaccount:cancel" });
+  if (footer.length > 0) keyboard.push(footer);
   return { inline_keyboard: keyboard };
 };
 
-// ✅ SAFE EDIT (ANTI ERROR "message is not modified")
+const kbText = (showBack = false) => {
+  if (showBack) {
+    return { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "setupaccount:back" }]] };
+  }
+  return { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }]] };
+};
+
+const kbConfirm = () => ({
+  inline_keyboard: [
+    [{ text: "✅ Simpan", callback_data: "setupaccount:save" }],
+    [{ text: "⬅️ Back", callback_data: "setupaccount:back" }],
+    [{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }],
+  ],
+});
+
+// ✅ SAFE EDIT
 async function safeEdit(ctx, chatId, messageId, text, kb) {
   try {
     await ctx.api.editMessageText(chatId, messageId, text, {
@@ -71,7 +87,6 @@ function sheetsClient() {
     },
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
-
   return google.sheets({ version: "v4", auth });
 }
 
@@ -91,7 +106,6 @@ function hasInitialBalance(rows, akun) {
 async function appendInitialBalance(data) {
   const sheets = sheetsClient();
   const now = new Date().toISOString();
-
   await sheets.spreadsheets.values.append({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: "Sheet1!A:O",
@@ -131,11 +145,12 @@ export default {
     const rows = await fetchAllRows();
     const msg = await ctx.reply(
       "Pilih akun yang ingin diset saldo awalnya:",
-      { reply_markup: kbList(OPTIONS.akun, "setupaccount:akun") }
+      { reply_markup: kbList(OPTIONS.akun, "setupaccount:akun", 2, false, true) }
     );
 
     states.set(ctx.from.id, {
       step: "akun",
+      history: [],
       rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
@@ -147,69 +162,53 @@ export default {
     if (!state) return ctx.answerCallbackQuery();
 
     const data = ctx.callbackQuery.data;
+    await ctx.answerCallbackQuery();
 
-    // CANCEL
     if (data === "setupaccount:cancel") {
       states.delete(ctx.from.id);
-      await ctx.answerCallbackQuery();
-      return safeEdit(
-        ctx,
-        state.chatId,
-        state.messageId,
-        "❌ Setup akun dibatalkan.",
-        { inline_keyboard: [] }
-      );
+      return safeEdit(ctx, state.chatId, state.messageId, "❌ Setup akun dibatalkan.", {
+        inline_keyboard: [],
+      });
     }
 
-    // SAVE
+    if (data === "setupaccount:back") {
+      state.step = state.history.pop() || "akun";
+      return this.render(ctx, state);
+    }
+
     if (data === "setupaccount:save") {
       await appendInitialBalance(state);
       states.delete(ctx.from.id);
-      await ctx.answerCallbackQuery();
-
       return safeEdit(
         ctx,
         state.chatId,
         state.messageId,
-        `✅ *Saldo awal berhasil disimpan*
-
-Akun       : ${state.akun}
-Saldo Awal : *${formatAmount(state.jumlah, state.mataUang)}*
-Mata Uang  : ${state.mataUang}
-Metode     : System
-Tag        : #Initial`,
+        `✅ *Saldo awal berhasil disimpan*\n\nAkun       : ${state.akun}\nSaldo Awal : *${formatAmount(state.jumlah, state.mataUang)}*\nMata Uang  : ${state.mataUang}\nMetode     : System\nTag        : #Initial`,
         { inline_keyboard: [] }
       );
     }
 
     const [, step, value] = data.split(":");
-    state[step] = value;
 
-    // AKUN
+    // Simpan riwayat sebelum ganti langkah
+    state.history.push(state.step);
+
     if (step === "akun") {
       if (hasInitialBalance(state.rows, value)) {
+        state.history.pop(); // undo push
         return ctx.answerCallbackQuery({
           text: "Akun ini sudah memiliki saldo awal.",
           show_alert: true,
         });
       }
-
+      state.akun = value;
       state.step = "jumlah";
-      await ctx.answerCallbackQuery();
-
-      return safeEdit(
-        ctx,
-        state.chatId,
-        state.messageId,
-        `Masukkan *saldo awal* untuk akun *${value}*:`,
-        { inline_keyboard: [] }
-      );
+      return this.render(ctx, state);
     }
 
-    // MATA UANG
     if (step === "mataUang") {
+      state.mataUang = value;
       state.step = "confirm";
-      await ctx.answerCallbackQuery();
       return this.render(ctx, state);
     }
   },
@@ -219,41 +218,49 @@ Tag        : #Initial`,
     if (!state) return;
 
     await ctx.deleteMessage().catch(() => {});
+    state.history.push(state.step);
 
     if (state.step === "jumlah") {
       state.jumlah = toNumber(ctx.message.text);
       state.step = "mataUang";
-
-      return safeEdit(
-        ctx,
-        state.chatId,
-        state.messageId,
-        "Pilih mata uang:",
-        kbList(OPTIONS.mataUang, "setupaccount:mataUang")
-      );
+      return this.render(ctx, state);
     }
   },
 
   async render(ctx, state) {
-    if (state.step !== "confirm") return;
-
-    return safeEdit(
-      ctx,
-      state.chatId,
-      state.messageId,
-      `🧾 *Konfirmasi Setup Akun*
-
-Akun       : ${state.akun}
-Saldo Awal : *${formatAmount(state.jumlah, state.mataUang)}*
-Mata Uang  : ${state.mataUang}
-
-Lanjutkan?`,
-      {
-        inline_keyboard: [
-          [{ text: "✅ Simpan", callback_data: "setupaccount:save" }],
-          [{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }],
-        ],
-      }
-    );
+    switch (state.step) {
+      case "akun":
+        return safeEdit(
+          ctx,
+          state.chatId,
+          state.messageId,
+          "Pilih akun yang ingin diset saldo awalnya:",
+          kbList(OPTIONS.akun, "setupaccount:akun", 2, false, true)
+        );
+      case "jumlah":
+        return safeEdit(
+          ctx,
+          state.chatId,
+          state.messageId,
+          `Masukkan *saldo awal* untuk akun *${state.akun}*:\n\nFormat: 100000 atau 100.000`,
+          kbText(true)
+        );
+      case "mataUang":
+        return safeEdit(
+          ctx,
+          state.chatId,
+          state.messageId,
+          "Pilih mata uang:",
+          kbList(OPTIONS.mataUang, "setupaccount:mataUang", 2, true, false)
+        );
+      case "confirm":
+        return safeEdit(
+          ctx,
+          state.chatId,
+          state.messageId,
+          `🧾 *Konfirmasi Setup Akun*\n\nAkun       : ${state.akun}\nSaldo Awal : *${formatAmount(state.jumlah, state.mataUang)}*\nMata Uang  : ${state.mataUang}\n\nLanjutkan?`,
+          kbConfirm()
+        );
+    }
   },
 };
