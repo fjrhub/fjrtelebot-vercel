@@ -98,6 +98,7 @@ export default {
   name: "transfer",
 
   async execute(ctx) {
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
     const rows = await fetchAllRows();
     const msg = await ctx.reply("🔁 Transfer Antar Akun\n\nPilih akun asal:", {
       reply_markup: kbList(OPTIONS.akun, "transfer:akunAsal", false, true),
