@@ -67,10 +67,31 @@ async function appendRows(values) {
 /* =========================
    KEYBOARD
 ========================= */
-const kbList = (list, step) => ({
-  inline_keyboard: list.map((v) => [
-    { text: v, callback_data: `sellpulsa:${step}:${v}` },
-  ]),
+const kbList = (list, prefix, showBack = false, showCancel = false) => {
+  const buttons = list.map((v) => [{ text: v, callback_data: `${prefix}:${v}` }]);
+  const footer = [];
+
+  if (showBack) footer.push({ text: "⬅️ Back", callback_data: "sellpulsa:back" });
+  if (showCancel)
+    footer.push({ text: "❌ Cancel", callback_data: "sellpulsa:cancel" });
+
+  if (footer.length > 0) buttons.push(footer);
+  return { inline_keyboard: buttons };
+};
+
+const kbText = (showBack = false) => {
+  if (showBack) {
+    return { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "sellpulsa:back" }]] };
+  }
+  return { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "sellpulsa:cancel" }]] };
+};
+
+const kbConfirm = () => ({
+  inline_keyboard: [
+    [{ text: "✅ Simpan", callback_data: "sellpulsa:save:ok" }],
+    [{ text: "⬅️ Back", callback_data: "sellpulsa:back" }],
+    [{ text: "❌ Cancel", callback_data: "sellpulsa:cancel" }],
+  ],
 });
 
 /* =========================
@@ -81,16 +102,16 @@ export default {
 
   async execute(ctx) {
     const rows = await fetchAllRows();
-
     const msg = await ctx.reply(
       "🔁 Jual Pulsa / Top-up\n\nPilih akun penerima pembayaran:",
       {
-        reply_markup: kbList(OPTIONS.akun, "akunMasuk"),
+        reply_markup: kbList(OPTIONS.akun, "sellpulsa:akunMasuk", false, true),
       }
     );
 
     states.set(ctx.from.id, {
       step: "akunMasuk",
+      history: [],
       rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
@@ -105,31 +126,42 @@ export default {
     const state = states.get(ctx.from.id);
     if (!state) return;
 
-    const [, step, value] = ctx.callbackQuery.data.split(":");
-
     const edit = (text, markup) =>
       ctx.api.editMessageText(state.chatId, state.messageId, text, {
         reply_markup: markup,
       });
 
+    const data = ctx.callbackQuery.data;
+
+    if (data === "sellpulsa:cancel") {
+      states.delete(ctx.from.id);
+      return edit("❌ Transaksi dibatalkan.");
+    }
+
+    if (data === "sellpulsa:back") {
+      state.step = state.history.pop() || "akunMasuk";
+      return this.render(ctx, state);
+    }
+
+    const [, step, value] = data.split(":");
+
+    // Simpan riwayat sebelum update langkah
+    state.history.push(state.step);
+
     if (step === "akunMasuk") {
       state.akunMasuk = value;
       state.step = "akunKeluar";
-      return edit(
-        "Pilih akun pengeluaran (dompet pulsa):",
-        kbList(OPTIONS.akun, "akunKeluar")
-      );
+      return this.render(ctx, state);
     }
 
     if (step === "akunKeluar") {
       state.akunKeluar = value;
       state.step = "deskripsi";
-      return edit("Masukkan deskripsi transaksi (misal: Pulsa Tri 20k):");
+      return this.render(ctx, state);
     }
 
     if (step === "save") {
       const now = new Date().toISOString();
-
       const akunMasukInfo = getLastSaldo(state.rows, state.akunMasuk);
       const akunKeluarInfo = getLastSaldo(state.rows, state.akunKeluar);
 
@@ -137,9 +169,7 @@ export default {
         return edit("❌ Saldo dompet tidak mencukupi untuk transaksi ini.");
       }
 
-      // 🔁 URUTAN: PENGELUARAN DULU (kirim ke pembeli = Transfer), lalu PEMASUKAN (masuk ke dompet = Cash)
       const entries = [
-        // 1. Pengeluaran → Transfer (kirim pulsa via e-wallet)
         [
           "Pengeluaran",
           "Usaha",
@@ -148,7 +178,7 @@ export default {
           state.jumlahKeluar,
           "Rp",
           state.akunKeluar,
-          "Transfer", // keluar ke pembeli = transfer
+          "Transfer",
           akunKeluarInfo.saldo,
           akunKeluarInfo.saldo - state.jumlahKeluar,
           state.tag,
@@ -156,7 +186,6 @@ export default {
           now,
           now,
         ],
-        // 2. Pemasukan → Cash (uang masuk ke dompet kamu)
         [
           "Pemasukan",
           "Usaha",
@@ -165,7 +194,7 @@ export default {
           state.jumlahMasuk,
           "Rp",
           state.akunMasuk,
-          "Cash", // masuk ke dompet = cash
+          "Cash",
           akunMasukInfo.saldo,
           akunMasukInfo.saldo + state.jumlahMasuk,
           state.tag,
@@ -177,7 +206,6 @@ export default {
 
       await appendRows(entries);
 
-      // ✅ Detail sukses tanpa emoji, format Rp10.000
       const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
       const successText = `✅ Transaksi jual pulsa berhasil disimpan!
 
@@ -196,11 +224,6 @@ Catatan: ${state.catatan}`;
       states.delete(ctx.from.id);
       return edit(successText);
     }
-
-    if (step === "cancel") {
-      states.delete(ctx.from.id);
-      return edit("❌ Transaksi dibatalkan.");
-    }
   },
 
   async handleText(ctx) {
@@ -209,44 +232,58 @@ Catatan: ${state.catatan}`;
 
     await ctx.deleteMessage().catch(() => {});
 
+    state.history.push(state.step);
+
+    if (state.step === "deskripsi") {
+      state.deskripsi = ctx.message.text;
+      state.step = "jumlahMasuk";
+    } else if (state.step === "jumlahMasuk") {
+      state.jumlahMasuk = toNumber(ctx.message.text);
+      state.step = "jumlahKeluar";
+    } else if (state.step === "jumlahKeluar") {
+      state.jumlahKeluar = toNumber(ctx.message.text);
+      state.step = "tag";
+    } else if (state.step === "tag") {
+      state.tag = ctx.message.text;
+      state.step = "catatan";
+    } else if (state.step === "catatan") {
+      state.catatan = ctx.message.text;
+      state.step = "confirm";
+    }
+
+    return this.render(ctx, state);
+  },
+
+  async render(ctx, state) {
     const edit = (text, markup) =>
       ctx.api.editMessageText(state.chatId, state.messageId, text, {
         reply_markup: markup,
       });
 
-    if (state.step === "deskripsi") {
-      state.deskripsi = ctx.message.text;
-      state.step = "jumlahMasuk";
-      return edit("Masukkan jumlah DITERIMA dari pembeli:");
-    }
-
-    if (state.step === "jumlahMasuk") {
-      state.jumlahMasuk = toNumber(ctx.message.text);
-      state.step = "jumlahKeluar";
-      return edit("Masukkan jumlah DIBERIKAN ke pembeli (nilai pulsa):");
-    }
-
-    if (state.step === "jumlahKeluar") {
-      state.jumlahKeluar = toNumber(ctx.message.text);
-      state.step = "tag";
-      return edit("Masukkan tag (misal: Pulsa, Gopay, dll):");
-    }
-
-    if (state.step === "tag") {
-      state.tag = ctx.message.text;
-      state.step = "catatan";
-      return edit("Masukkan catatan tambahan:");
-    }
-
-    if (state.step === "catatan") {
-      state.catatan = ctx.message.text;
-      state.step = "confirm";
-
-      const akunMasukInfo = getLastSaldo(state.rows, state.akunMasuk);
-      const akunKeluarInfo = getLastSaldo(state.rows, state.akunKeluar);
-      const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
-
-      const confirmText = `🧾 KONFIRMASI JUAL PULSA
+    switch (state.step) {
+      case "akunMasuk":
+        return edit(
+          "🔁 Jual Pulsa / Top-up\n\nPilih akun penerima pembayaran:",
+          kbList(OPTIONS.akun, "sellpulsa:akunMasuk", false, true)
+        );
+      case "akunKeluar":
+        return edit(
+          "Pilih akun pengeluaran (dompet pulsa):",
+          kbList(OPTIONS.akun, "sellpulsa:akunKeluar", true, false)
+        );
+      case "deskripsi":
+        return edit("Masukkan deskripsi transaksi (misal: Pulsa Tri 20k):", kbText(true));
+      case "jumlahMasuk":
+        return edit("Masukkan jumlah DITERIMA dari pembeli:", kbText(true));
+      case "jumlahKeluar":
+        return edit("Masukkan jumlah DIBERIKAN ke pembeli (nilai pulsa):", kbText(true));
+      case "tag":
+        return edit("Masukkan tag (misal: Pulsa, Gopay, dll):", kbText(true));
+      case "catatan":
+        return edit("Masukkan catatan tambahan:", kbText(true));
+      case "confirm": {
+        const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
+        const confirmText = `🧾 KONFIRMASI JUAL PULSA
 
 Deskripsi: ${state.deskripsi}
 Pembeli bayar: ${formatRupiah(state.jumlahMasuk)}
@@ -260,13 +297,8 @@ Tag: ${state.tag}
 Catatan: ${state.catatan}
 
 Lanjutkan?`;
-
-      return edit(confirmText, {
-        inline_keyboard: [
-          [{ text: "✅ Simpan", callback_data: "sellpulsa:save:ok" }],
-          [{ text: "❌ Batal", callback_data: "sellpulsa:cancel" }],
-        ],
-      });
+        return edit(confirmText, kbConfirm());
+      }
     }
   },
 };
