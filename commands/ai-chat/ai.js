@@ -41,7 +41,17 @@ const groq =
 global._groq = groq;
 
 /* =========================
-   HELPERS
+   MARKDOWN HELPER
+========================= */
+function replyMarkdown(ctx, text) {
+  return ctx.reply(text, {
+    parse_mode: "Markdown", // ⬅️ PENTING
+    disable_web_page_preview: true,
+  });
+}
+
+/* =========================
+   DB HELPERS
 ========================= */
 async function getCollection() {
   if (!mongoClient.topology?.isConnected()) {
@@ -75,6 +85,9 @@ async function resetHistory(chatId) {
   await col.deleteMany({ chatId });
 }
 
+/* =========================
+   GROQ HANDLER
+========================= */
 async function sendToGroq(chatId, userMessage) {
   await addMessage(chatId, "user", userMessage);
 
@@ -109,7 +122,7 @@ export default {
     const text = ctx.message?.text?.trim();
     if (!text) return;
 
-    // chatId unik (private / group)
+    // chatId unik
     const chatId =
       ctx.chat.type === "private"
         ? String(ctx.from.id)
@@ -117,12 +130,14 @@ export default {
 
     // /ai
     if (text === "/ai") {
-      return ctx.reply(
-        "🤖 AI aktif!\n\n" +
-          "Gunakan:\n" +
-          "• /ai <pertanyaan>\n" +
-          "• /ai history\n" +
-          "• /ai new"
+      return replyMarkdown(
+        ctx,
+        `🤖 *AI aktif!*
+
+Gunakan:
+• \`/ai <pertanyaan>\`
+• \`/ai history\`
+• \`/ai new\``
       );
     }
 
@@ -132,27 +147,27 @@ export default {
     if (input.toLowerCase() === "history") {
       const history = await getHistory(chatId);
       if (!history.length) {
-        return ctx.reply("Belum ada history.");
+        return replyMarkdown(ctx, "_Belum ada history._");
       }
 
-      let msg = "📜 History:\n\n";
+      let msg = "📜 *History:*\n\n";
       history.forEach(h => {
-        msg += `[${h.role}] ${h.content}\n\n`;
+        msg += `*${h.role.toUpperCase()}*\n${h.content}\n\n`;
       });
 
-      return ctx.reply(msg.slice(0, 4096));
+      return replyMarkdown(ctx, msg.slice(0, 4096));
     }
 
     // /ai new
     if (input.toLowerCase() === "new") {
       await resetHistory(chatId);
-      return ctx.reply("🔄 History direset.");
+      return replyMarkdown(ctx, "🔄 *History berhasil direset.*");
     }
 
     // CHAT AI
     try {
       const reply = await sendToGroq(chatId, input);
-      await ctx.reply(reply.slice(0, 4096));
+      await replyMarkdown(ctx, reply.slice(0, 4096));
     } catch (err) {
       console.error("AI ERROR:", err);
       ctx.reply("❌ Gagal memproses AI.");
