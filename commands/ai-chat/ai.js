@@ -1,21 +1,23 @@
 import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" }); // load env
+dotenv.config({ path: ".env.local" });
 
 import { MongoClient, ServerApiVersion } from "mongodb";
+import Groq from "groq-sdk";
 
 /* =========================
-   ENV
+   CONFIG
 ========================= */
 const uri = process.env.MONGODB_URI;
 const dbName = process.env.MONGO_DB || "ai_bot";
 const collectionName = process.env.MONGO_COLLECTION || "ai_history";
 
 if (!uri) throw new Error("Missing MONGODB_URI");
+if (!process.env.GROQ_API_KEY) throw new Error("Missing GROQ_API_KEY");
 
 /* =========================
-   SINGLETON CLIENT
+   MONGO SINGLETON
 ========================= */
-const client =
+const mongoClient =
   global._mongoClient ??
   new MongoClient(uri, {
     serverApi: {
@@ -25,66 +27,135 @@ const client =
     },
   });
 
-global._mongoClient = client;
+global._mongoClient = mongoClient;
 
 /* =========================
-   MAIN TEST
+   GROQ CLIENT
 ========================= */
-async function run() {
-  try {
-    console.log("🔌 Connecting to MongoDB...");
-    if (!client.topology?.isConnected()) {
-      await client.connect();
-    }
+const groq =
+  global._groq ??
+  new Groq({
+    apiKey: process.env.GROQ_API_KEY,
+  });
 
-    const db = client.db(dbName);
-    const collection = db.collection(collectionName);
+global._groq = groq;
 
-    // simulasi chatId (nanti di bot = userId / group:userId)
-    const chatId = "test_user_123";
-
-    /* 1️⃣ Insert pesan user */
-    await collection.insertOne({
-      chatId,
-      role: "user",
-      content: "Halo AI, jelaskan MongoDB secara singkat",
-      createdAt: new Date(),
-    });
-
-    /* 2️⃣ Insert balasan AI (dummy) */
-    await collection.insertOne({
-      chatId,
-      role: "assistant",
-      content: "MongoDB adalah database NoSQL berbasis dokumen JSON-like.",
-      createdAt: new Date(),
-    });
-
-    console.log("✅ Messages inserted");
-
-    /* 3️⃣ Ambil history */
-    const history = await collection
-      .find({ chatId })
-      .sort({ createdAt: 1 })
-      .limit(10)
-      .toArray();
-
-    console.log("\n📜 Chat History:");
-    history.forEach((h, i) => {
-      console.log(`${i + 1}. [${h.role}] ${h.content}`);
-    });
-
-    /* 4️⃣ Reset history (optional) */
-    // await collection.deleteMany({ chatId });
-    // console.log("\n🗑️ History reset");
-
-  } catch (err) {
-    console.error("❌ Mongo Test Error:", err);
-  } finally {
-    // sengaja TIDAK close, mirip bot singleton
-    console.log("\nℹ️ MongoDB client kept alive (singleton)");
+/* =========================
+   HELPERS
+========================= */
+async function getCollection() {
+  if (!mongoClient.topology?.isConnected()) {
+    await mongoClient.connect();
   }
+  const db = mongoClient.db(dbName);
+  return db.collection(collectionName);
 }
 
-run();
+async function addMessage(chatId, role, content) {
+  const col = await getCollection();
+  await col.insertOne({
+    chatId,
+    role,
+    content,
+    createdAt: new Date(),
+  });
+}
 
-export default client;
+async function getHistory(chatId, limit = 15) {
+  const col = await getCollection();
+  return col
+    .find({ chatId })
+    .sort({ createdAt: 1 })
+    .limit(limit)
+    .toArray();
+}
+
+async function resetHistory(chatId) {
+  const col = await getCollection();
+  await col.deleteMany({ chatId });
+}
+
+async function sendToGroq(chatId, userMessage) {
+  await addMessage(chatId, "user", userMessage);
+
+  const history = await getHistory(chatId);
+  const messages = history.map(h => ({
+    role: h.role,
+    content: h.content,
+  }));
+
+  const completion = await groq.chat.completions.create({
+    model: "llama-3.1-8b-instant",
+    messages,
+    temperature: 1,
+    max_completion_tokens: 1024,
+  });
+
+  const reply =
+    completion.choices[0]?.message?.content || "No response.";
+
+  await addMessage(chatId, "assistant", reply);
+  return reply;
+}
+
+/* =========================
+   COMMAND EXPORT
+========================= */
+export default {
+  name: "ai",
+  description: "Chat AI with Groq + MongoDB history",
+
+  async execute(ctx) {
+    const text = ctx.message?.text?.trim();
+    if (!text) return;
+
+    // chatId unik (private / group)
+    const chatId =
+      ctx.chat.type === "private"
+        ? String(ctx.from.id)
+        : `${ctx.chat.id}:${ctx.from.id}`;
+
+    // /ai
+    if (text === "/ai") {
+      return ctx.reply(
+        "🤖 AI aktif!\n\n" +
+          "Gunakan:\n" +
+          "• /ai <pertanyaan>\n" +
+          "• /ai history\n" +
+          "• /ai new"
+      );
+    }
+
+    const input = text.replace(/^\/ai\s*/i, "");
+
+    // /ai history
+    if (input.toLowerCase() === "history") {
+      const history = await getHistory(chatId);
+      if (!history.length) {
+        return ctx.reply("Belum ada history.");
+      }
+
+      let msg = "📜 History:\n\n";
+      history.forEach(h => {
+        msg += `[${h.role}] ${h.content}\n\n`;
+      });
+
+      return ctx.reply(msg.slice(0, 4096));
+    }
+
+    // /ai new
+    if (input.toLowerCase() === "new") {
+      await resetHistory(chatId);
+      return ctx.reply("🔄 History direset.");
+    }
+
+    // CHAT AI
+    try {
+      const reply = await sendToGroq(chatId, input);
+      await ctx.reply(reply.slice(0, 4096));
+    } catch (err) {
+      console.error("AI ERROR:", err);
+      ctx.reply("❌ Gagal memproses AI.");
+    }
+  },
+};
