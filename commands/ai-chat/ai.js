@@ -1,49 +1,31 @@
-const { MongoClient, ServerApiVersion } = require("mongodb");
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" }); // load env
+
+import { MongoClient, ServerApiVersion } from "mongodb";
 
 /* =========================
-   CONFIG
+   ENV
 ========================= */
 const uri = process.env.MONGODB_URI;
 const dbName = process.env.MONGO_DB || "ai_bot";
 const collectionName = process.env.MONGO_COLLECTION || "ai_history";
 
-// simulasi chatId (user / group)
-const chatId = "123456";
+if (!uri) throw new Error("Missing MONGODB_URI");
 
 /* =========================
-   MONGO CLIENT
+   SINGLETON CLIENT
 ========================= */
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-});
-
-/* =========================
-   FUNCTIONS
-========================= */
-async function addMessage(collection, role, content) {
-  return collection.insertOne({
-    chatId,
-    role, // "user" | "assistant"
-    content,
-    createdAt: new Date(),
+const client =
+  global._mongoClient ??
+  new MongoClient(uri, {
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: true,
+      deprecationErrors: true,
+    },
   });
-}
 
-async function getHistory(collection, limit = 10) {
-  return collection
-    .find({ chatId })
-    .sort({ createdAt: 1 })
-    .limit(limit)
-    .toArray();
-}
-
-async function resetHistory(collection) {
-  return collection.deleteMany({ chatId });
-}
+global._mongoClient = client;
 
 /* =========================
    MAIN TEST
@@ -51,42 +33,58 @@ async function resetHistory(collection) {
 async function run() {
   try {
     console.log("🔌 Connecting to MongoDB...");
-    await client.connect();
+    if (!client.topology?.isConnected()) {
+      await client.connect();
+    }
 
     const db = client.db(dbName);
     const collection = db.collection(collectionName);
 
-    /* 1️⃣ Simpan pesan user */
-    await addMessage(collection, "user", "Halo AI, apa itu MongoDB?");
-    console.log("✅ User message saved");
+    // simulasi chatId (nanti di bot = userId / group:userId)
+    const chatId = "test_user_123";
 
-    /* 2️⃣ Simpan balasan AI (dummy dulu) */
-    await addMessage(
-      collection,
-      "assistant",
-      "MongoDB adalah database NoSQL berbasis dokumen."
-    );
-    console.log("✅ AI reply saved");
-
-    /* 3️⃣ Ambil history */
-    const history = await getHistory(collection, 5);
-    console.log("\n📜 Chat History:");
-    history.forEach((h, i) => {
-      console.log(
-        `${i + 1}. [${h.role}] ${h.content} (${h.createdAt.toISOString()})`
-      );
+    /* 1️⃣ Insert pesan user */
+    await collection.insertOne({
+      chatId,
+      role: "user",
+      content: "Halo AI, jelaskan MongoDB secara singkat",
+      createdAt: new Date(),
     });
 
-    /* 4️⃣ Reset history (opsional, uncomment kalau mau test) */
-    // await resetHistory(collection);
+    /* 2️⃣ Insert balasan AI (dummy) */
+    await collection.insertOne({
+      chatId,
+      role: "assistant",
+      content: "MongoDB adalah database NoSQL berbasis dokumen JSON-like.",
+      createdAt: new Date(),
+    });
+
+    console.log("✅ Messages inserted");
+
+    /* 3️⃣ Ambil history */
+    const history = await collection
+      .find({ chatId })
+      .sort({ createdAt: 1 })
+      .limit(10)
+      .toArray();
+
+    console.log("\n📜 Chat History:");
+    history.forEach((h, i) => {
+      console.log(`${i + 1}. [${h.role}] ${h.content}`);
+    });
+
+    /* 4️⃣ Reset history (optional) */
+    // await collection.deleteMany({ chatId });
     // console.log("\n🗑️ History reset");
 
   } catch (err) {
-    console.error("❌ Error:", err);
+    console.error("❌ Mongo Test Error:", err);
   } finally {
-    await client.close();
-    console.log("\n🔒 MongoDB connection closed");
+    // sengaja TIDAK close, mirip bot singleton
+    console.log("\nℹ️ MongoDB client kept alive (singleton)");
   }
 }
 
 run();
+
+export default client;
