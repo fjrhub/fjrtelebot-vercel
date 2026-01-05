@@ -12,7 +12,8 @@ const dbName = process.env.MONGO_DB || "ai_bot";
 const collectionName = process.env.MONGO_COLLECTION || "ai_history";
 
 if (!uri) throw new Error("Missing MONGODB_URI");
-if (!process.env.GROQ_API_KEY) throw new Error("Missing GROQ_API_KEY");
+if (!process.env.GROQ_API_KEY)
+  throw new Error("Missing GROQ_API_KEY");
 
 /* =========================
    MONGO SINGLETON
@@ -45,7 +46,7 @@ global._groq = groq;
 ========================= */
 function replyMarkdown(ctx, text) {
   return ctx.reply(text, {
-    parse_mode: "Markdown", // ⬅️ PENTING
+    parse_mode: "Markdown",
     disable_web_page_preview: true,
   });
 }
@@ -57,8 +58,7 @@ async function getCollection() {
   if (!mongoClient.topology?.isConnected()) {
     await mongoClient.connect();
   }
-  const db = mongoClient.db(dbName);
-  return db.collection(collectionName);
+  return mongoClient.db(dbName).collection(collectionName);
 }
 
 async function addMessage(chatId, role, content) {
@@ -71,7 +71,7 @@ async function addMessage(chatId, role, content) {
   });
 }
 
-async function getHistory(chatId, limit = 15) {
+async function getHistory(chatId, limit = 100) {
   const col = await getCollection();
   return col
     .find({ chatId })
@@ -122,7 +122,6 @@ export default {
     const text = ctx.message?.text?.trim();
     if (!text) return;
 
-    // chatId unik
     const chatId =
       ctx.chat.type === "private"
         ? String(ctx.from.id)
@@ -143,19 +142,36 @@ Gunakan:
 
     const input = text.replace(/^\/ai\s*/i, "");
 
-    // /ai history
+    /* =========================
+       /ai history → FILE TXT
+    ========================= */
     if (input.toLowerCase() === "history") {
       const history = await getHistory(chatId);
+
       if (!history.length) {
         return replyMarkdown(ctx, "_Belum ada history._");
       }
 
-      let msg = "📜 *History:*\n\n";
-      history.forEach(h => {
-        msg += `*${h.role.toUpperCase()}*\n${h.content}\n\n`;
+      let content = "AI CHAT HISTORY\n";
+      content += "============================\n\n";
+
+      history.forEach((h, i) => {
+        content += `${i + 1}. ${h.role.toUpperCase()}\n`;
+        content += `${h.content}\n`;
+        content += "----------------------------\n";
       });
 
-      return replyMarkdown(ctx, msg.slice(0, 4096));
+      const buffer = Buffer.from(content, "utf-8");
+
+      return ctx.replyWithDocument(
+        {
+          source: buffer,
+          filename: "history.txt",
+        },
+        {
+          caption: "📜 History AI (TXT)",
+        }
+      );
     }
 
     // /ai new
