@@ -12,7 +12,8 @@
     "axios": "^1.13.2",
     "dotenv": "16.3.1",
     "googleapis": "168.0.0",
-    "grammy": "^1.39.2"
+    "grammy": "^1.39.2",
+    "mongodb": "^7.0.0"
   },
   "devDependencies": {
     "next": "16.0.7",
