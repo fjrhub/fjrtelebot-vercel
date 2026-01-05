@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
+
 import { MongoClient, ServerApiVersion } from "mongodb";
 import Groq from "groq-sdk";
 import { InputFile } from "grammy";
@@ -9,7 +10,8 @@ import { InputFile } from "grammy";
 ========================= */
 const uri = process.env.MONGODB_URI;
 const dbName = process.env.MONGO_DB || "ai_bot";
-const collectionName = process.env.MONGO_COLLECTION || "ai_history";
+const collectionName =
+  process.env.MONGO_COLLECTION || "ai_history";
 
 if (!uri) throw new Error("Missing MONGODB_URI");
 if (!process.env.GROQ_API_KEY)
@@ -40,16 +42,6 @@ const groq =
   });
 
 global._groq = groq;
-
-/* =========================
-   MARKDOWN HELPER
-========================= */
-function replyMarkdown(ctx, text) {
-  return ctx.reply(text, {
-    parse_mode: "Markdown",
-    disable_web_page_preview: true,
-  });
-}
 
 /* =========================
    DB HELPERS
@@ -97,26 +89,28 @@ async function sendToGroq(chatId, userMessage) {
     content: h.content,
   }));
 
-  const completion = await groq.chat.completions.create({
-    model: "compound-beta",
-    messages,
-    temperature: 1,
-    max_completion_tokens: 1024,
-  });
+  const completion =
+    await groq.chat.completions.create({
+      model: "compound-beta",
+      messages,
+      temperature: 1,
+      max_completion_tokens: 1024,
+    });
 
   const reply =
-    completion.choices[0]?.message?.content || "No response.";
+    completion.choices[0]?.message?.content ||
+    "No response.";
 
   await addMessage(chatId, "assistant", reply);
   return reply;
 }
 
 /* =========================
-   COMMAND EXPORT
+   COMMAND
 ========================= */
 export default {
   name: "ai",
-  description: "Chat AI with Groq + MongoDB history",
+  description: "AI chat with history (grammy)",
 
   async execute(ctx) {
     const text = ctx.message?.text?.trim();
@@ -129,14 +123,11 @@ export default {
 
     // /ai
     if (text === "/ai") {
-      return replyMarkdown(
-        ctx,
-        `🤖 *AI aktif!*
-
-Gunakan:
-• \`/ai <pertanyaan>\`
-• \`/ai history\`
-• \`/ai new\``
+      return ctx.reply(
+        "AI aktif\n\n" +
+          "/ai <pertanyaan>\n" +
+          "/ai history\n" +
+          "/ai new"
       );
     }
 
@@ -149,44 +140,44 @@ Gunakan:
       const history = await getHistory(chatId);
 
       if (!history.length) {
-        return replyMarkdown(ctx, "_Belum ada history._");
+        return ctx.reply("Belum ada history.");
       }
 
-      let content = "AI CHAT HISTORY\n";
-      content += "============================\n\n";
+      // ISI FILE POLOS
+      let content = "";
+      for (const h of history) {
+        content += `${h.role}: ${h.content}\n`;
+      }
 
-      history.forEach((h, i) => {
-        content += `${i + 1}. ${h.role.toUpperCase()}\n`;
-        content += `${h.content}\n`;
-        content += "----------------------------\n";
-      });
+      const file = new InputFile(
+        Buffer.from(content, "utf-8"),
+        "history.txt"
+      );
 
-      const buffer = Buffer.from(content, "utf-8");
-
-      return ctx.replyWithDocument(
-        {
-          source: buffer,
-          filename: "history.txt",
-        },
-        {
-          caption: "📜 History AI (TXT)",
-        }
+      return ctx.api.sendDocument(
+        ctx.chat.id,
+        file
       );
     }
 
     // /ai new
     if (input.toLowerCase() === "new") {
       await resetHistory(chatId);
-      return replyMarkdown(ctx, "🔄 *History berhasil direset.*");
+      return ctx.reply("History direset.");
     }
 
-    // CHAT AI
+    /* =========================
+       CHAT AI
+    ========================= */
     try {
-      const reply = await sendToGroq(chatId, input);
-      await replyMarkdown(ctx, reply.slice(0, 4096));
+      const reply = await sendToGroq(
+        chatId,
+        input
+      );
+      await ctx.reply(reply.slice(0, 4096));
     } catch (err) {
       console.error("AI ERROR:", err);
-      ctx.reply("❌ Gagal memproses AI.");
+      ctx.reply("Gagal memproses AI.");
     }
   },
 };
