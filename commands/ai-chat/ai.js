@@ -98,7 +98,7 @@ async function sendToGroq(chatId, userMessage) {
   }));
 
   const completion = await groq.chat.completions.create({
-    model: "llama-3.1-8b-instant",
+    model: "compound-beta",
     messages,
     temperature: 1,
     max_completion_tokens: 1024,
