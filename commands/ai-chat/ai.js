@@ -83,26 +83,49 @@ async function resetHistory(chatId) {
 async function sendToGroq(chatId, userMessage) {
   await addMessage(chatId, "user", userMessage);
 
-  const history = await getHistory(chatId);
+  const history = await getHistory(chatId, 20);
   const messages = history.map(h => ({
     role: h.role,
     content: h.content,
   }));
 
-  const completion =
-    await groq.chat.completions.create({
-      model: "compound-beta",
-      messages,
-      temperature: 1,
-      max_completion_tokens: 1024,
-    });
+  let completion;
+
+  try {
+    completion = await withTimeout(
+      groq.chat.completions.create({
+        model: "compound-beta",
+        messages,
+        temperature: 0.8,
+        max_completion_tokens: 512,
+      }),
+      9000 // ⏱ 9 detik
+    );
+  } catch (err) {
+    if (err.message === "API_TIMEOUT") {
+      return "❌ Tidak ada response dari API (timeout 9 detik).";
+    }
+    throw err;
+  }
 
   const reply =
     completion.choices[0]?.message?.content ||
-    "No response.";
+    "❌ Tidak ada response dari API.";
 
   await addMessage(chatId, "assistant", reply);
   return reply;
+}
+
+function withTimeout(promise, ms = 9000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error("API_TIMEOUT")),
+        ms
+      )
+    ),
+  ]);
 }
 
 /* =========================
