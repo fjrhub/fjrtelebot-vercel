@@ -4,7 +4,7 @@ import { google } from "googleapis";
    OPTIONS
 ========================= */
 const OPTIONS = {
-  jenis: ["Pemasukan", "Pengeluaran", "Transfer"],
+  jenis: ["Pemasukan", "Pengeluaran"],
   kategori: {
     Pengeluaran: [
       "Makanan",
