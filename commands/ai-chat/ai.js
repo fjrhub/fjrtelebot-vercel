@@ -93,7 +93,7 @@ async function sendToGroq(chatId, userMessage) {
         temperature: 0.8,
         max_completion_tokens: 512,
       }),
-      8000
+      5000
     );
 
     const duration = Date.now() - startTime;
@@ -118,7 +118,7 @@ async function sendToGroq(chatId, userMessage) {
   }
 }
 
-function withTimeout(promise, ms = 8000) {
+function withTimeout(promise, ms = 5000) {
   return Promise.race([
     promise,
     new Promise((_, reject) =>
