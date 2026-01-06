@@ -4,7 +4,7 @@ import { google } from "googleapis";
    OPTIONS
 ========================= */
 const OPTIONS = {
-  akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo"],
+  akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo", "Gopay"],
 };
 
 /* =========================
