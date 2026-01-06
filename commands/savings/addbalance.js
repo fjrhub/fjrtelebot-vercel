@@ -13,6 +13,7 @@ const OPTIONS = {
       "Utilitas",
       "Pendidikan",
       "Belanja",
+      "Lainnya",
     ],
     Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
   },
