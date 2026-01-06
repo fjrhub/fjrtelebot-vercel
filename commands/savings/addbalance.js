@@ -24,6 +24,7 @@ const OPTIONS = {
       Utilitas: ["Internet", "Listrik", "Pulsa"],
       Pendidikan: ["Kursus", "Buku"],
       Belanja: ["Online", "Offline", "Langganan"],
+      Lainnya: ["Uang Kas", "Iuran", "Kewajiban", "Pengeluaran Rutin"],
     },
     Pemasukan: {
       Gaji: ["Gaji Bulanan", "Bonus", "THR"],
@@ -218,14 +219,14 @@ export default {
       states.delete(ctx.from.id);
       return edit(
         `✅ Transaksi berhasil disimpan!\n\n` +
-        `Jenis: ${state.jenis}\n` +
-        `Kategori: ${state.kategori}\n` +
-        `Sub: ${state.subKategori}\n` +
-        `Deskripsi: ${state.deskripsi}\n` +
-        `Jumlah: ${formatAmount(state.jumlah, state.mataUang)}\n` +
-        `Akun: ${state.akun}\n` +
-        `Metode: ${state.metode}\n` +
-        `Tag: ${state.tag || "-"}`,
+          `Jenis: ${state.jenis}\n` +
+          `Kategori: ${state.kategori}\n` +
+          `Sub: ${state.subKategori}\n` +
+          `Deskripsi: ${state.deskripsi}\n` +
+          `Jumlah: ${formatAmount(state.jumlah, state.mataUang)}\n` +
+          `Akun: ${state.akun}\n` +
+          `Metode: ${state.metode}\n` +
+          `Tag: ${state.tag || "-"}`
       );
     }
 
@@ -290,15 +291,15 @@ export default {
       case "kategori":
         return edit(
           "Pilih kategori:",
-          kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori"),
+          kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori")
         );
       case "subKategori":
         return edit(
           "Pilih sub kategori:",
           kbList(
             OPTIONS.subKategori[state.jenis][state.kategori],
-            "addbalance:subKategori",
-          ),
+            "addbalance:subKategori"
+          )
         );
       case "deskripsi":
         return edit("Masukkan deskripsi:", kbText());
@@ -309,12 +310,12 @@ export default {
       case "mataUang":
         return edit(
           "Pilih mata uang:",
-          kbList(OPTIONS.mataUang, "addbalance:mataUang"),
+          kbList(OPTIONS.mataUang, "addbalance:mataUang")
         );
       case "metode":
         return edit(
           "Pilih metode:",
-          kbList(OPTIONS.metode, "addbalance:metode"),
+          kbList(OPTIONS.metode, "addbalance:metode")
         );
       case "tag":
         return edit("Masukkan tag:", kbText());
@@ -323,22 +324,22 @@ export default {
       case "confirm":
         return edit(
           `🧾 Konfirmasi Transaksi\n\n` +
-          `Jenis: ${state.jenis}\n` +
-          `Kategori: ${state.kategori}\n` +
-          `Sub: ${state.subKategori}\n` +
-          `Deskripsi: ${state.deskripsi}\n` +
-          `Jumlah: ${formatAmount(state.jumlah, state.mataUang)}\n` +
-          `Akun: ${state.akun}\n` +
-          `Metode: ${state.metode}\n` +
-          `Tag: ${state.tag || "-"}\n\n` +
-          `Lanjutkan?`,
+            `Jenis: ${state.jenis}\n` +
+            `Kategori: ${state.kategori}\n` +
+            `Sub: ${state.subKategori}\n` +
+            `Deskripsi: ${state.deskripsi}\n` +
+            `Jumlah: ${formatAmount(state.jumlah, state.mataUang)}\n` +
+            `Akun: ${state.akun}\n` +
+            `Metode: ${state.metode}\n` +
+            `Tag: ${state.tag || "-"}\n\n` +
+            `Lanjutkan?`,
           {
             inline_keyboard: [
               [{ text: "✅ Simpan", callback_data: "addbalance:save" }],
               [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
               [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
             ],
-          },
+          }
         );
     }
   },
