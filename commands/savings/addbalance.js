@@ -6,15 +6,7 @@ import { google } from "googleapis";
 const OPTIONS = {
   jenis: ["Pemasukan", "Pengeluaran"],
   kategori: {
-    Pengeluaran: [
-      "Makanan",
-      "Transportasi",
-      "Hiburan",
-      "Utilitas",
-      "Pendidikan",
-      "Belanja",
-      "Lainnya",
-    ],
+    Pengeluaran: ["Makanan","Transportasi","Hiburan","Utilitas","Pendidikan","Belanja","Lainnya"],
     Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
   },
   subKategori: {
