@@ -23,7 +23,7 @@ const OPTIONS = {
       Transportasi: ["Bensin", "Ojol", "Parkir", "Servis", "Darurat"],
       Hiburan: ["Game", "Streaming"],
       Utilitas: ["Internet", "Listrik", "Pulsa"],
-      Pendidikan: ["Kursus", "Buku"],
+      Pendidikan: ["Buku","Fotokopi","ATK","Print","Modul","Iuran Sekolah"],
       Belanja: ["Online", "Offline", "Langganan"],
       Lainnya: ["Uang Kas", "Iuran", "Kewajiban", "Pengeluaran Rutin"],
     },
