@@ -30,6 +30,11 @@ async function sendToGroq(userMessage) {
       model: "compound-beta",
       messages: [
         {
+          role: "system",
+          content:
+            "Answer using Markdown. Use fenced code blocks for code so it can be copied.",
+        },
+        {
           role: "user",
           content: userMessage,
         },
@@ -56,7 +61,7 @@ async function sendToGroq(userMessage) {
 ========================= */
 export default {
   name: "ai",
-  description: "AI chat without history",
+  description: "AI chat (Markdown output)",
 
   async execute(ctx) {
     const text = ctx.message?.text?.trim();
@@ -64,7 +69,10 @@ export default {
 
     // /ai
     if (text === "/ai") {
-      return ctx.reply("Gunakan:\n/ai <pertanyaan>");
+      return ctx.reply(
+        "*AI aktif*\n\nGunakan:\n`/ai <pertanyaan>`",
+        { parse_mode: "Markdown" }
+      );
     }
 
     const input = text.replace(/^\/ai\s*/i, "");
@@ -72,7 +80,10 @@ export default {
 
     try {
       const reply = await sendToGroq(input);
-      await ctx.reply(reply.slice(0, 4096));
+
+      await ctx.reply(reply.slice(0, 4096), {
+        parse_mode: "Markdown",
+      });
     } catch (err) {
       console.error("AI COMMAND ERROR:", err);
       ctx.reply("❌ Terjadi kesalahan.");
