@@ -32,7 +32,7 @@ async function sendToGroq(userMessage) {
         {
           role: "system",
           content:
-            "Answer using Markdown. Use fenced code blocks for code so it can be copied.",
+            "Answer in English using Markdown. Use fenced code blocks for any code so it can be copied easily.",
         },
         {
           role: "user",
@@ -46,13 +46,13 @@ async function sendToGroq(userMessage) {
     const reply = completion.choices?.[0]?.message?.content;
 
     if (!reply) {
-      return "❌ Tidak ada response dari AI.";
+      return "❌ No response received from the AI.";
     }
 
     return reply;
   } catch (err) {
     console.error("GROQ ERROR:", err);
-    return "❌ Gagal mendapatkan response AI.";
+    return "❌ Failed to get a response from the AI.";
   }
 }
 
@@ -70,7 +70,7 @@ export default {
     // /ai
     if (text === "/ai") {
       return ctx.reply(
-        "*AI aktif*\n\nGunakan:\n`/ai <pertanyaan>`",
+        "*AI is active*\n\nUsage:\n`/ai <your question>`",
         { parse_mode: "Markdown" }
       );
     }
@@ -86,7 +86,7 @@ export default {
       });
     } catch (err) {
       console.error("AI COMMAND ERROR:", err);
-      ctx.reply("❌ Terjadi kesalahan.");
+      ctx.reply("❌ An unexpected error occurred.");
     }
   },
 };
