@@ -25,57 +25,30 @@ global._groq = groq;
    GROQ HANDLER (NO HISTORY)
 ========================= */
 async function sendToGroq(userMessage) {
-  const startTime = Date.now();
-
   try {
-    const completion = await withTimeout(
-      groq.chat.completions.create({
-        model: "compound-beta",
-        messages: [
-          {
-            role: "user",
-            content: userMessage,
-          },
-        ],
-        temperature: 0.8,
-        max_completion_tokens: 512,
-      }),
-      5000
-    );
-
-    const duration = Date.now() - startTime;
+    const completion = await groq.chat.completions.create({
+      model: "compound-beta",
+      messages: [
+        {
+          role: "user",
+          content: userMessage,
+        },
+      ],
+      temperature: 0.7,
+      max_completion_tokens: 256,
+    });
 
     const reply = completion.choices?.[0]?.message?.content;
 
     if (!reply) {
-      console.warn(`[NO_RESPONSE] duration=${duration}ms`);
       return "❌ Tidak ada response dari AI.";
     }
 
     return reply;
   } catch (err) {
-    if (err.code === "API_TIMEOUT") {
-      return "❌ AI timeout (5 detik).";
-    }
-
+    console.error("GROQ ERROR:", err);
     return "❌ Gagal mendapatkan response AI.";
   }
-}
-
-/* =========================
-   TIMEOUT HELPER
-========================= */
-function withTimeout(promise, ms = 5000) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => {
-        const err = new Error("API_TIMEOUT");
-        err.code = "API_TIMEOUT";
-        reject(err);
-      }, ms)
-    ),
-  ]);
 }
 
 /* =========================
@@ -101,7 +74,7 @@ export default {
       const reply = await sendToGroq(input);
       await ctx.reply(reply.slice(0, 4096));
     } catch (err) {
-      console.error("AI ERROR:", err);
+      console.error("AI COMMAND ERROR:", err);
       ctx.reply("❌ Terjadi kesalahan.");
     }
   },
