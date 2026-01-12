@@ -6,7 +6,15 @@ import { google } from "googleapis";
 const OPTIONS = {
   jenis: ["Pemasukan", "Pengeluaran"],
   kategori: {
-    Pengeluaran: ["Makanan","Transportasi","Hiburan","Utilitas","Pendidikan","Belanja","Lainnya"],
+    Pengeluaran: [
+      "Makanan",
+      "Transportasi",
+      "Hiburan",
+      "Utilitas",
+      "Pendidikan",
+      "Belanja",
+      "Lainnya",
+    ],
     Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
   },
   subKategori: {
@@ -15,9 +23,9 @@ const OPTIONS = {
       Transportasi: ["Bensin", "Ojol", "Parkir", "Servis", "Darurat"],
       Hiburan: ["Game", "Streaming"],
       Utilitas: ["Internet", "Listrik", "Pulsa"],
-      Pendidikan: ["Buku","Fotokopi","ATK","Print","Modul","Iuran Sekolah"],
+      Pendidikan: ["Buku","Fotokopi","ATK","Print","Foto Dokumen","Modul","Iuran Sekolah",],
       Belanja: ["Online", "Offline", "Langganan"],
-      Lainnya: ["Uang Kas", "Iuran", "Kewajiban", "Pengeluaran Rutin"],
+      Lainnya: ["Uang Kas", "Kewajiban", "Pengeluaran Rutin"],
     },
     Pemasukan: {
       Gaji: ["Gaji Bulanan", "Bonus", "THR"],
