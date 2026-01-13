@@ -32,7 +32,7 @@ async function sendToGroq(userMessage) {
         {
           role: "system",
           content:
-            "Answer in English using Markdown. Use fenced code blocks for any code so it can be copied easily.",
+            "Answer briefly in English using Markdown. Use fenced code blocks for any code so it can be copied easily.",
         },
         {
           role: "user",
@@ -69,10 +69,9 @@ export default {
 
     // /ai
     if (text === "/ai") {
-      return ctx.reply(
-        "*AI is active*\n\nUsage:\n`/ai <your question>`",
-        { parse_mode: "Markdown" }
-      );
+      return ctx.reply("*AI is active*\n\nUsage:\n`/ai <your question>`", {
+        parse_mode: "Markdown",
+      });
     }
 
     const input = text.replace(/^\/ai\s*/i, "");
