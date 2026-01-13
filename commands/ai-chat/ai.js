@@ -32,7 +32,7 @@ async function sendToGroq(userMessage) {
         {
           role: "system",
           content:
-            "Answer briefly in English using Markdown. Use fenced code blocks for any code so it can be copied easily.",
+            "Answer briefly in English. Use code blocks only when sharing code.",
         },
         {
           role: "user",
