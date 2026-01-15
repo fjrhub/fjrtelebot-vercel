@@ -68,19 +68,29 @@ async function appendRows(values) {
    KEYBOARD
 ========================= */
 const kbList = (list, prefix, showBack = false, showCancel = false) => {
-  const buttons = list.map((v) => [{ text: v, callback_data: `${prefix}:${v}` }]);
+  const buttons = list.map((v) => [
+    { text: v, callback_data: `${prefix}:${v}` },
+  ]);
   const footer = [];
-  if (showBack) footer.push({ text: "⬅️ Back", callback_data: "transfer:back" });
-  if (showCancel) footer.push({ text: "❌ Cancel", callback_data: "transfer:cancel" });
+  if (showBack)
+    footer.push({ text: "⬅️ Back", callback_data: "transfer:back" });
+  if (showCancel)
+    footer.push({ text: "❌ Cancel", callback_data: "transfer:cancel" });
   if (footer.length > 0) buttons.push(footer);
   return { inline_keyboard: buttons };
 };
 
 const kbText = (showBack = false) => {
   if (showBack) {
-    return { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "transfer:back" }]] };
+    return {
+      inline_keyboard: [[{ text: "⬅️ Back", callback_data: "transfer:back" }]],
+    };
   }
-  return { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "transfer:cancel" }]] };
+  return {
+    inline_keyboard: [
+      [{ text: "❌ Cancel", callback_data: "transfer:cancel" }],
+    ],
+  };
 };
 
 const kbConfirm = () => ({
@@ -206,7 +216,25 @@ export default {
       ]);
 
       states.delete(ctx.from.id);
-      return edit("✅ Transfer berhasil disimpan");
+      return edit(
+        `✅ TRANSFER BERHASIL DISIMPAN
+
+🧾 DETAIL TRANSFER
+
+Deskripsi: ${state.deskripsi}
+Jumlah: ${format(state.jumlah)} ${asal.mataUang}
+
+Dari: ${state.akunAsal}
+Saldo: ${format(asal.saldo)} → ${format(asal.saldo - state.jumlah)}
+
+Ke: ${state.akunTujuan}
+Saldo: ${format(tujuan.saldo)} → ${format(tujuan.saldo + state.jumlah)}
+
+Tag: ${state.tag}
+Catatan: ${state.catatan}
+
+🕒 ${new Date().toLocaleString("id-ID")}`
+      );
     }
   },
 
