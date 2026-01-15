@@ -222,7 +222,7 @@ export default {
 🧾 DETAIL TRANSFER
 
 Deskripsi: ${state.deskripsi}
-Jumlah: ${format(state.jumlah)} ${asal.mataUang}
+Jumlah: ${asal.mataUang}${format(state.jumlah)}
 
 Dari: ${state.akunAsal}
 Saldo: ${format(asal.saldo)} → ${format(asal.saldo - state.jumlah)}
@@ -295,7 +295,7 @@ Catatan: ${state.catatan}
           `🧾 KONFIRMASI TRANSFER
 
 Deskripsi: ${state.deskripsi}
-Jumlah: ${format(state.jumlah)} ${asal.mataUang}
+Jumlah: ${asal.mataUang}${format(state.jumlah)}
 
 Dari: ${state.akunAsal}
 Saldo: ${format(asal.saldo)} → ${format(asal.saldo - state.jumlah)}
