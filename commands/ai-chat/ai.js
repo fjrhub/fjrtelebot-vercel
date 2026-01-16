@@ -28,33 +28,18 @@ async function sendToGroq(userMessage) {
   try {
     const completion = await groq.chat.completions.create({
       model: "compound-beta",
-      messages: [
-        {
-          role: "system",
-          content:
-            "Answer briefly in English. Use code blocks only when sharing code.",
-        },
-        {
-          role: "user",
-          content: userMessage,
-        },
-      ],
+      messages: [{ role: "user", content: userMessage }],
       temperature: 1,
-      max_completion_tokens: 256,
+      max_tokens: 256,
     });
 
-    const reply = completion.choices?.[0]?.message?.content;
-
-    if (!reply) {
-      return "❌ No response received from the AI.";
-    }
-
-    return reply;
+    return completion.choices?.[0]?.message?.content || "❌ No response received from the AI.";
   } catch (err) {
     console.error("GROQ ERROR:", err);
     return "❌ Failed to get a response from the AI.";
   }
 }
+
 
 /* =========================
    COMMAND (GRAMMY)
