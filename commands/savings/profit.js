@@ -21,7 +21,6 @@ async function fetchTransactions() {
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: "Sheet1!A2:N",
   });
-
   return res.data.values || [];
 }
 
@@ -39,7 +38,13 @@ function startOfWeek(date) {
   return d;
 }
 
-function calculateProfit(rows, mode = "all") {
+function normalizeTag(tag) {
+  return String(tag || "")
+    .replace("#", "")
+    .toLowerCase();
+}
+
+function calculateProfit(rows, mode = "all", filterTag = null) {
   let masuk = 0;
   let keluar = 0;
 
@@ -52,10 +57,14 @@ function calculateProfit(rows, mode = "all") {
     const kategori = r[1];
     const subKategori = r[2];
     const jumlah = Number(r[4]) || 0;
+    const tag = normalizeTag(r[10]);
     const createdAt = new Date(r[12]);
 
-    // hanya hitung usaha penjualan
+    // hanya usaha penjualan
     if (kategori !== "Usaha" || subKategori !== "Penjualan") return;
+
+    // filter tag jika ada
+    if (filterTag && !tag.includes(filterTag)) return;
 
     if (mode === "week" && createdAt < startWeek) return;
     if (mode === "month" && createdAt < startMonth) return;
@@ -80,29 +89,38 @@ export default {
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
-    const rows = await fetchTransactions();
+    const args = ctx.message.text.split(" ").slice(1);
+    const filterTag = args.length ? args.join(" ").toLowerCase() : null;
 
+    const rows = await fetchTransactions();
     if (!rows.length) {
       return ctx.reply("📭 Belum ada data transaksi.");
     }
 
-    const all = calculateProfit(rows, "all");
-    const month = calculateProfit(rows, "month");
-    const week = calculateProfit(rows, "week");
+    const all = calculateProfit(rows, "all", filterTag);
+    const month = calculateProfit(rows, "month", filterTag);
+    const week = calculateProfit(rows, "week", filterTag);
+
+    const label = filterTag
+      ? `(${filterTag.toUpperCase()})`
+      : "(ALL BUSINESS)";
 
     const text =
-      `📊 *RINGKASAN PROFIT USAHA PULSA*\n\n` +
-      `🕒 *SEMUA WAKTU*\n` +
-      `🟢 Pemasukan : ${formatRupiah(all.masuk)}\n` +
-      `🔴 Pengeluaran : ${formatRupiah(all.keluar)}\n` +
+      `📊 *PROFIT SUMMARY ${label}*\n\n` +
+
+      `🕒 *ALL TIME*\n` +
+      `🟢 Income : ${formatRupiah(all.masuk)}\n` +
+      `🔴 Expense : ${formatRupiah(all.keluar)}\n` +
       `💰 Profit : ${formatRupiah(all.profit)}\n\n` +
-      `📅 *BULAN INI*\n` +
-      `🟢 Pemasukan : ${formatRupiah(month.masuk)}\n` +
-      `🔴 Pengeluaran : ${formatRupiah(month.keluar)}\n` +
+
+      `📅 *THIS MONTH*\n` +
+      `🟢 Income : ${formatRupiah(month.masuk)}\n` +
+      `🔴 Expense : ${formatRupiah(month.keluar)}\n` +
       `💰 Profit : ${formatRupiah(month.profit)}\n\n` +
-      `📆 *MINGGU INI*\n` +
-      `🟢 Pemasukan : ${formatRupiah(week.masuk)}\n` +
-      `🔴 Pengeluaran : ${formatRupiah(week.keluar)}\n` +
+
+      `📆 *THIS WEEK*\n` +
+      `🟢 Income : ${formatRupiah(week.masuk)}\n` +
+      `🔴 Expense : ${formatRupiah(week.keluar)}\n` +
       `💰 Profit : ${formatRupiah(week.profit)}`;
 
     return ctx.reply(text, { parse_mode: "Markdown" });
