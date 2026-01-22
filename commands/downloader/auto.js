@@ -79,7 +79,10 @@ export default {
 
           if (videos.length) {
             const firstVideo = videos[0];
-            await ctx.api.sendVideo(chatId, firstVideo);
+            await ctx.api.sendVideo(chatId, firstVideo, {
+              caption: "🔗 Source: Siputzx",
+              parse_mode: "Markdown",
+            });
             return;
           }
 
@@ -123,9 +126,11 @@ export default {
           `Downloads: ${toNumberFormat(md.download)}`,
         ].join("\n");
 
-        const caption = `${
-          md.durasi && md.durasi > 0 ? `Duration: ${md.durasi}s\n` : ""
-        }${statsOnly}`;
+        const caption = `
+        ${md.durasi && md.durasi > 0 ? `Duration: ${md.durasi}s\n` : ""}
+        ${statsOnly}
+        \n🔗 Source: Archive
+        `;
 
         // Jika ada image slide
         if (
@@ -200,7 +205,10 @@ export default {
           `⬇️ Downloads: ${stats.download ?? "?"}`,
         ].join("\n");
 
-        const caption = `${statsText}`;
+        const caption = `
+        ${statsText}
+        \n🔗 Source: Vreden
+        `;
 
         // If the photo
         if (photos.length > 0) {
@@ -244,14 +252,22 @@ export default {
           (item) => item.format === "mp4" && item.resolution === "HD"
         );
         if (!hdMp4Video?.url) throw new Error("HD MP4 URL not found.");
-        await ctx.api.sendVideo(chatId, hdMp4Video.url);
+
+        await ctx.api.sendVideo(chatId, hdMp4Video.url, {
+          caption: "🔗 Source: Siputzx",
+          parse_mode: "Markdown",
+        });
       };
 
       const fbHandler2 = async (ctx, chatId, data) => {
         if (!data) throw new Error("Invalid FB API 2 format.");
         const videoUrl = data.media?.[2] || data.media?.[0] || null;
         if (!videoUrl) throw new Error("No HD video URL found in API 2.");
-        await ctx.api.sendVideo(chatId, videoUrl);
+
+        await ctx.api.sendVideo(chatId, videoUrl, {
+          caption: "🔗 Source: Archive",
+          parse_mode: "Markdown",
+        });
       };
 
       const fbHandler3 = async (ctx, chatId, data) => {
@@ -265,11 +281,10 @@ export default {
           throw new Error("No valid video URL found from API 3 (Vreden).");
 
         await ctx.api.sendVideo(chatId, videoUrl, {
+          caption: "🔗 Source: Vreden",
+          parse_mode: "Markdown",
           ...(thumb ? { thumbnail: thumb } : {}),
         });
-
-        // Add this at the end just in case
-        throw new Error("API 3 returned no valid downloadable content.");
       };
 
       // Instagram handlers
@@ -290,7 +305,10 @@ export default {
         const photos = urls.filter((u) => !u.includes(".mp4"));
 
         if (video) {
-          await ctx.api.sendVideo(chatId, video);
+          await ctx.api.sendVideo(chatId, video, {
+            caption: "🔗 Source: Siputzx",
+            parse_mode: "Markdown",
+          });
           return;
         }
 
@@ -335,11 +353,12 @@ export default {
         const comments = result.comment || 0;
 
         // 🔹 Create a simple caption (emoji ❤️ 💬)
-        const caption = `❤️ ${toNumberFormat(likes)}   💬 ${toNumberFormat(
-          comments
-        )}`;
+        const caption = `
+        ❤️ ${toNumberFormat(likes)}   💬 ${toNumberFormat(comments)}
+        \n🔗 Source: Archive
+        `;
 
-        // 🔹 
+        // 🔹
         if (isVideo) {
           await ctx.api.sendVideo(chatId, mediaUrls[0], {
             caption,
@@ -377,6 +396,8 @@ export default {
         // Send video if any
         if (videos.length > 0) {
           await ctx.api.sendVideo(chatId, videos[0].url, {
+            caption: "🔗 Source: Vreden",
+            parse_mode: "Markdown",
             supports_streaming: true,
           });
           return;
@@ -402,9 +423,9 @@ export default {
       };
 
       const enableStatus = {
-        tiktok: { siputzx: true, archive: true, vreden: true }, // All Instagram accounts are active and functional as of 12/11/25
-        instagram: { siputzx: true, archive: true, vreden: true }, // All Instagram accounts are active and functional as of 12/11/25
-        facebook: { siputzx: true, archive: true, vreden: true }, // Siputzx api error 500, Archive vreden api normal and functional as of 12/11/25
+        tiktok: { siputzx: true, archive: true, vreden: true },
+        instagram: { siputzx: true, archive: true, vreden: true },
+        facebook: { siputzx: true, archive: true, vreden: true },
       };
 
       const apis = [];
