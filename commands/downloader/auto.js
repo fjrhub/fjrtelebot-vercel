@@ -135,12 +135,7 @@ export default {
           `Downloads: ${toNumberFormat(md.download)}`,
         ].join("\n");
 
-        const caption = `
-        ${md.durasi && md.durasi > 0 ? `Duration: ${md.durasi}s\n` : ""}
-        ${statsOnly}
-        \n🔗 Source: Archive
-        📱 Platform: ${platform}
-        `;
+        const caption = `Duration: ${md.durasi}s\n\n${statsOnly}\n\n🔗 Source: Archive\n📱 Platform: ${platform}`;
 
         // Jika ada image slide
         if (
@@ -215,11 +210,7 @@ export default {
           `⬇️ Downloads: ${stats.download ?? "?"}`,
         ].join("\n");
 
-        const caption = `
-        ${statsText}
-        \n🔗 Source: Vreden
-        📱 Platform: ${platform}
-        `;
+        const caption = `${statsText}\n\n🔗 Source: Vreden\n📱 Platform: ${platform}`;
 
         // If the photo
         if (photos.length > 0) {
@@ -364,11 +355,7 @@ export default {
         const comments = result.comment || 0;
 
         // 🔹 Create a simple caption (emoji ❤️ 💬)
-        const caption = `
-        ❤️ ${toNumberFormat(likes)}   💬 ${toNumberFormat(comments)}
-        \n🔗 Source: Archive
-        📱 Platform: ${platform}
-        `;
+        const caption = `${likes > 0 ? `❤️ ${toNumberFormat(likes)}` : ''}${comments > 0 ? `   💬 ${toNumberFormat(comments)}` : ''}\n\n🔗 Source: Archive\n📱 Platform: ${platform}`;
 
         // 🔹
         if (isVideo) {
@@ -435,14 +422,14 @@ export default {
       };
 
       const enableStatus = {
-        tiktok: { siputzx: true, archive: true, vreden: true },
+        tikTok: { siputzx: true, archive: true, vreden: true },
         instagram: { siputzx: true, archive: true, vreden: true },
         facebook: { siputzx: true, archive: true, vreden: true },
       };
 
       const apis = [];
       if (isTikTok) {
-        const active = enableStatus.tiktok;
+        const active = enableStatus.tikTok;
         apis.push(
           active.siputzx && {
             url: createUrl(
