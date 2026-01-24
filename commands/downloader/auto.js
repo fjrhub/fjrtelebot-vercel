@@ -57,6 +57,15 @@ export default {
           ? (n / 1_000).toFixed(1) + "K"
           : n.toString();
 
+      // Platform detection helper
+      const getPlatformFromUrl = () => {
+        if (isTikTok) return "TikTok";
+        if (isInstagram) return "Instagram";
+        if (isFacebook) return "Facebook";
+        return "Unknown";
+      };
+      const platform = getPlatformFromUrl();
+
       // -------------------- HANDLERS --------------------
 
       // TikTok handler variations
@@ -80,7 +89,7 @@ export default {
           if (videos.length) {
             const firstVideo = videos[0];
             await ctx.api.sendVideo(chatId, firstVideo, {
-              caption: "🔗 Source: Siputzx",
+              caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}`,
               parse_mode: "Markdown",
             });
             return;
@@ -130,6 +139,7 @@ export default {
         ${md.durasi && md.durasi > 0 ? `Duration: ${md.durasi}s\n` : ""}
         ${statsOnly}
         \n🔗 Source: Archive
+        📱 Platform: ${platform}
         `;
 
         // Jika ada image slide
@@ -208,6 +218,7 @@ export default {
         const caption = `
         ${statsText}
         \n🔗 Source: Vreden
+        📱 Platform: ${platform}
         `;
 
         // If the photo
@@ -254,7 +265,7 @@ export default {
         if (!hdMp4Video?.url) throw new Error("HD MP4 URL not found.");
 
         await ctx.api.sendVideo(chatId, hdMp4Video.url, {
-          caption: "🔗 Source: Siputzx",
+          caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}`,
           parse_mode: "Markdown",
         });
       };
@@ -265,7 +276,7 @@ export default {
         if (!videoUrl) throw new Error("No HD video URL found in API 2.");
 
         await ctx.api.sendVideo(chatId, videoUrl, {
-          caption: "🔗 Source: Archive",
+          caption: `🔗 Source: Archive\n📱 Platform: ${platform}`,
           parse_mode: "Markdown",
         });
       };
@@ -281,7 +292,7 @@ export default {
           throw new Error("No valid video URL found from API 3 (Vreden).");
 
         await ctx.api.sendVideo(chatId, videoUrl, {
-          caption: "🔗 Source: Vreden",
+          caption: `🔗 Source: Vreden\n📱 Platform: ${platform}`,
           parse_mode: "Markdown",
           ...(thumb ? { thumbnail: thumb } : {}),
         });
@@ -306,7 +317,7 @@ export default {
 
         if (video) {
           await ctx.api.sendVideo(chatId, video, {
-            caption: "🔗 Source: Siputzx",
+            caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}`,
             parse_mode: "Markdown",
           });
           return;
@@ -356,6 +367,7 @@ export default {
         const caption = `
         ❤️ ${toNumberFormat(likes)}   💬 ${toNumberFormat(comments)}
         \n🔗 Source: Archive
+        📱 Platform: ${platform}
         `;
 
         // 🔹
@@ -396,7 +408,7 @@ export default {
         // Send video if any
         if (videos.length > 0) {
           await ctx.api.sendVideo(chatId, videos[0].url, {
-            caption: "🔗 Source: Vreden",
+            caption: `🔗 Source: Vreden\n📱 Platform: ${platform}`,
             parse_mode: "Markdown",
             supports_streaming: true,
           });
