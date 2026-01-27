@@ -19,7 +19,7 @@ const OPTIONS = {
   },
   subKategori: {
     Pengeluaran: {
-      Makanan: ["Makan Harian", "Jajan", "Kopi"],
+      Makanan: ["Makan Harian", "Jajan", "Kopi", "Minuman"],
       Transportasi: ["Bensin", "Ojol", "Parkir", "Servis", "Darurat"],
       Hiburan: ["Game", "Streaming"],
       Utilitas: ["Internet", "Listrik", "Pulsa"],
