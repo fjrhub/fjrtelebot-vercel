@@ -163,7 +163,7 @@ export default {
         state.history.pop(); // undo push sebelumnya
         return edit(
           "❌ Akun asal dan tujuan tidak boleh sama.\n\nPilih akun tujuan:",
-          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false)
+          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false),
         );
       }
       state.akunTujuan = value;
@@ -233,7 +233,7 @@ Saldo: ${format(tujuan.saldo)} → ${format(tujuan.saldo + state.jumlah)}
 Tag: ${state.tag}
 Catatan: ${state.catatan}
 
-🕒 ${new Date().toLocaleString("id-ID")}`
+🕒 ${new Date().toLocaleString("id-ID")}`,
       );
     }
   },
@@ -263,10 +263,19 @@ Catatan: ${state.catatan}
   },
 
   async render(ctx, state) {
-    const edit = (text, markup) =>
-      ctx.api.editMessageText(state.chatId, state.messageId, text, {
-        reply_markup: markup,
-      });
+    const edit = async (text, markup) => {
+      try {
+        await ctx.api.editMessageText(state.chatId, state.messageId, text, {
+          reply_markup: markup,
+        });
+      } catch (err) {
+        if (err?.description?.includes("message is not modified")) {
+          return;
+        }
+
+        console.error("Edit message failed:", err);
+      }
+    };
 
     const asal = getLastSaldo(state.rows, state.akunAsal);
     const tujuan = getLastSaldo(state.rows, state.akunTujuan);
@@ -275,12 +284,12 @@ Catatan: ${state.catatan}
       case "akunAsal":
         return edit(
           "🔁 Transfer Antar Akun\n\nPilih akun asal:",
-          kbList(OPTIONS.akun, "transfer:akunAsal", false, true)
+          kbList(OPTIONS.akun, "transfer:akunAsal", false, true),
         );
       case "akunTujuan":
         return edit(
           "Pilih akun tujuan:",
-          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false)
+          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false),
         );
       case "deskripsi":
         return edit("Masukkan deskripsi transfer:", kbText(true));
@@ -307,7 +316,7 @@ Tag: ${state.tag}
 Catatan: ${state.catatan}
 
 Lanjutkan?`,
-          kbConfirm()
+          kbConfirm(),
         );
     }
   },
