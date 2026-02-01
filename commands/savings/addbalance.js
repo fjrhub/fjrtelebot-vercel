@@ -37,7 +37,7 @@ const OPTIONS = {
       ],
       Belanja: ["Online", "Offline", "Langganan"],
       Investasi: ["Crypto", "Saham", "Emas", "Reksa Dana"],
-      Lainnya: ["Uang Kas", "Kewajiban", "Pengeluaran Rutin"],
+      Lainnya: ["Uang Kas", "Kewajiban", "Pengeluaran Rutin", "Pengeluaran Lain"],
     },
 
     Pemasukan: {
