@@ -5,6 +5,7 @@ import { google } from "googleapis";
 ========================= */
 const OPTIONS = {
   jenis: ["Pemasukan", "Pengeluaran"],
+
   kategori: {
     Pengeluaran: [
       "Makanan",
@@ -13,20 +14,32 @@ const OPTIONS = {
       "Utilitas",
       "Pendidikan",
       "Belanja",
+      "Investasi",
       "Lainnya",
     ],
     Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
   },
+
   subKategori: {
     Pengeluaran: {
       Makanan: ["Makan Harian", "Jajan", "Kopi", "Minuman"],
       Transportasi: ["Bensin", "Ojol", "Parkir", "Servis", "Darurat"],
       Hiburan: ["Game", "Streaming"],
       Utilitas: ["Internet", "Listrik", "Pulsa"],
-      Pendidikan: ["Buku","Fotokopi","ATK","Print","Foto Dokumen","Modul","Iuran Sekolah",],
+      Pendidikan: [
+        "Buku",
+        "Fotokopi",
+        "ATK",
+        "Print",
+        "Foto Dokumen",
+        "Modul",
+        "Iuran Sekolah",
+      ],
       Belanja: ["Online", "Offline", "Langganan"],
+      Investasi: ["Crypto", "Saham", "Emas", "Reksa Dana"],
       Lainnya: ["Uang Kas", "Kewajiban", "Pengeluaran Rutin"],
     },
+
     Pemasukan: {
       Gaji: ["Gaji Bulanan", "Bonus", "THR"],
       Usaha: ["Penjualan", "Jasa", "Komisi"],
@@ -36,8 +49,11 @@ const OPTIONS = {
       Lainnya: ["Uang Saku", "Bantuan", "Pemasukan Lain"],
     },
   },
-  akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo", "Gopay"],
+
+  akun: ["Wallet", "Dana", "Gopay", "Seabank", "Bank", "Binance", "Fjlsaldo"],
+
   metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
+
   mataUang: ["Rp", "USDT"],
 };
 
@@ -227,7 +243,7 @@ export default {
           `Jumlah: ${formatAmount(state.jumlah, state.mataUang)}\n` +
           `Akun: ${state.akun}\n` +
           `Metode: ${state.metode}\n` +
-          `Tag: ${state.tag || "-"}`
+          `Tag: ${state.tag || "-"}`,
       );
     }
 
@@ -292,15 +308,15 @@ export default {
       case "kategori":
         return edit(
           "Pilih kategori:",
-          kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori")
+          kbList(OPTIONS.kategori[state.jenis], "addbalance:kategori"),
         );
       case "subKategori":
         return edit(
           "Pilih sub kategori:",
           kbList(
             OPTIONS.subKategori[state.jenis][state.kategori],
-            "addbalance:subKategori"
-          )
+            "addbalance:subKategori",
+          ),
         );
       case "deskripsi":
         return edit("Masukkan deskripsi:", kbText());
@@ -311,12 +327,12 @@ export default {
       case "mataUang":
         return edit(
           "Pilih mata uang:",
-          kbList(OPTIONS.mataUang, "addbalance:mataUang")
+          kbList(OPTIONS.mataUang, "addbalance:mataUang"),
         );
       case "metode":
         return edit(
           "Pilih metode:",
-          kbList(OPTIONS.metode, "addbalance:metode")
+          kbList(OPTIONS.metode, "addbalance:metode"),
         );
       case "tag":
         return edit("Masukkan tag:", kbText());
@@ -340,7 +356,7 @@ export default {
               [{ text: "⬅️ Back", callback_data: "addbalance:back" }],
               [{ text: "❌ Cancel", callback_data: "addbalance:cancel" }],
             ],
-          }
+          },
         );
     }
   },
