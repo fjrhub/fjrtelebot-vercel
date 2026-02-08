@@ -100,7 +100,7 @@ function renderPage(state) {
 
   let text = `📒 Transaksi ${start + 1}-${Math.min(
     end,
-    state.rows.length
+    state.rows.length,
   )} dari ${state.rows.length}\n\n`;
 
   pageRows.forEach((r, i) => {
@@ -128,7 +128,7 @@ function renderPage(state) {
       `${kategori} › ${subKategori}\n` +
       `${deskripsi} | ${catatan || "-"}\n` +
       `${mataUang}${formatNumber(jumlah)} | ${formatNumber(
-        saldoSebelum
+        saldoSebelum,
       )} → ${formatNumber(saldoSesudah)}\n` +
       `🏷 ${tag || "-"}\n` +
       `🕒 ${formatDate(dibuatPada)}\n\n`;
@@ -154,8 +154,12 @@ export default {
       return ctx.reply("📭 Belum ada transaksi.");
     }
 
-    // Urutan: paling lama → paling baru
-    const orderedRows = rows;
+    // Urutan: paling baru → paling lama
+    const orderedRows = [...rows].sort((a, b) => {
+      const dateA = new Date(a[12]).getTime(); // dibuatPada
+      const dateB = new Date(b[12]).getTime();
+      return dateB - dateA; // DESC (terbaru dulu)
+    });
 
     const state = {
       page: 0,
