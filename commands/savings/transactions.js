@@ -100,7 +100,7 @@ function renderPage(state) {
 
   let text = `📒 Transaksi ${start + 1}-${Math.min(
     end,
-    state.rows.length
+    state.rows.length,
   )} dari ${state.rows.length}\n\n`;
 
   pageRows.forEach((r, i) => {
@@ -128,7 +128,7 @@ function renderPage(state) {
       `${kategori} › ${subKategori}\n` +
       `${deskripsi} | ${catatan || "-"}\n` +
       `${mataUang}${formatNumber(jumlah)} | ${formatNumber(
-        saldoSebelum
+        saldoSebelum,
       )} → ${formatNumber(saldoSesudah)}\n` +
       `🏷 ${tag || "-"}\n` +
       `🕒 ${formatDate(dibuatPada)}\n\n`;
@@ -148,14 +148,26 @@ export default {
 
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
+
     const rows = await fetchTransactions();
 
     if (!rows.length) {
       return ctx.reply("📭 Belum ada transaksi.");
     }
 
-    // Urutan: paling lama → paling baru
-    const orderedRows = rows;
+    // Ambil argumen setelah command
+    const args = ctx.message.text.split(" ");
+    const sortType = args[1]?.toLowerCase() === "desc" ? "desc" : "asc";
+
+    // Sorting berdasarkan tanggal (index 12 = dibuatPada)
+    const orderedRows = [...rows].sort((a, b) => {
+      const dateA = new Date(a[12]).getTime();
+      const dateB = new Date(b[12]).getTime();
+
+      return sortType === "desc"
+        ? dateB - dateA // terbaru dulu
+        : dateA - dateB; // terlama dulu
+    });
 
     const state = {
       page: 0,
@@ -168,7 +180,6 @@ export default {
       reply_markup: view.reply_markup,
     });
 
-    // simpan state SETELAH message berhasil dikirim
     states.set(ctx.from.id, {
       ...state,
       chatId: ctx.chat.id,
