@@ -98,10 +98,9 @@ function renderPage(state) {
 
   const pageRows = state.rows.slice(start, end);
 
-  let text = `📒 Transaksi ${start + 1}-${Math.min(
-    end,
-    state.rows.length,
-  )} dari ${state.rows.length}\n\n`;
+  let text = `📒 Transaksi (${state.sortType.toUpperCase()}) ${
+    start + 1
+  }-${Math.min(end, state.rows.length)} dari ${state.rows.length}\n\n`;
 
   pageRows.forEach((r, i) => {
     const [
@@ -121,7 +120,14 @@ function renderPage(state) {
     ] = r;
 
     const headerIcon = getHeaderIcon(jenis);
-    const nomor = start + i + 1; // nomor global
+
+    // Nomor dinamis
+    let nomor;
+    if (state.sortType === "desc") {
+      nomor = state.rows.length - (start + i);
+    } else {
+      nomor = start + i + 1;
+    }
 
     text +=
       `${nomor}. ${headerIcon} ${jenis} | ${akun} | ${metode}\n` +
@@ -155,7 +161,7 @@ export default {
       return ctx.reply("📭 Belum ada transaksi.");
     }
 
-    // Ambil argumen setelah command
+    // Ambil argumen sort
     const args = ctx.message.text.split(" ");
     const sortType = args[1]?.toLowerCase() === "desc" ? "desc" : "asc";
 
@@ -164,14 +170,13 @@ export default {
       const dateA = new Date(a[12]).getTime();
       const dateB = new Date(b[12]).getTime();
 
-      return sortType === "desc"
-        ? dateB - dateA // terbaru dulu
-        : dateA - dateB; // terlama dulu
+      return sortType === "desc" ? dateB - dateA : dateA - dateB;
     });
 
     const state = {
       page: 0,
       rows: orderedRows,
+      sortType,
     };
 
     const view = renderPage(state);
