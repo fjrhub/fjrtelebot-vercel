@@ -1,12 +1,12 @@
 import { google } from "googleapis";
-import fs from "fs";
-import path from "path";
 import { InputFile } from "grammy";
 
 /* =========================
-   DAFTAR AKUN
+   DAFTAR AKUN (EDIT DI SINI SAJA)
 ========================= */
 const ALL_WALLETS = ["wallet", "dana", "seabank"];
+// Tambah akun cukup:
+// const ALL_WALLETS = ["wallet", "dana", "seabank", "gopay"];
 
 /* =========================
    GOOGLE SHEETS
@@ -128,22 +128,25 @@ export default {
       let fileContent = "LAPORAN VALIDASI\n";
       fileContent += "=====================================\n\n";
 
+      // =========================
       // MODE 1 AKUN
+      // =========================
       if (target) {
         if (!ALL_WALLETS.includes(target)) {
-          return ctx.reply("Akun tidak terdaftar.");
+          return ctx.reply("Akun tidak terdaftar di ALL_WALLETS.");
         }
 
         const result = validateAccount(rows, target);
         fileContent += result.content;
 
         const fileName = `check_${target}.txt`;
-        const filePath = path.join(process.cwd(), fileName);
 
-        fs.writeFileSync(filePath, fileContent);
-
-        await ctx.replyWithDocument(new InputFile(filePath, fileName));
-        fs.unlinkSync(filePath);
+        await ctx.replyWithDocument(
+          new InputFile(
+            Buffer.from(fileContent, "utf-8"),
+            fileName
+          )
+        );
 
         await ctx.reply(
           result.hasError
@@ -154,7 +157,9 @@ export default {
         return;
       }
 
+      // =========================
       // MODE SEMUA AKUN
+      // =========================
       let summaryMessage = "HASIL VALIDASI SEMUA AKUN:\n\n";
       let globalError = false;
 
@@ -176,17 +181,18 @@ export default {
         : "KESIMPULAN AKHIR: ✅ SEMUA DATA BENAR\n";
 
       const fileName = `check_all.txt`;
-      const filePath = path.join(process.cwd(), fileName);
 
-      fs.writeFileSync(filePath, fileContent);
-
-      await ctx.replyWithDocument(new InputFile(filePath, fileName));
-      fs.unlinkSync(filePath);
+      await ctx.replyWithDocument(
+        new InputFile(
+          Buffer.from(fileContent, "utf-8"),
+          fileName
+        )
+      );
 
       await ctx.reply(summaryMessage);
 
     } catch (err) {
-      console.error(err);
+      console.error("Error di command check:", err);
       ctx.reply("Terjadi error saat validasi.");
     }
   },
