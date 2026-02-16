@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "axios": "^1.13.2",
+    "chartjs-node-canvas": "^5.0.0",
     "dotenv": "16.3.1",
     "googleapis": "168.0.0",
     "grammy": "^1.39.2",
-    "groq-sdk": "^0.37.0"
+    "groq-sdk": "^0.37.0",
+    "pdfkit": "^0.17.2"
   },
   "devDependencies": {
     "next": "16.0.7",
