@@ -15,7 +15,8 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
+const toNumber = (v) =>
+  Number(String(v).replace(/\./g, "").replace(",", "."));
 
 const format = (n) => new Intl.NumberFormat("id-ID").format(n);
 
@@ -71,26 +72,33 @@ const kbList = (list, prefix, showBack = false, showCancel = false) => {
   const buttons = list.map((v) => [
     { text: v, callback_data: `${prefix}:${v}` },
   ]);
+
   const footer = [];
   if (showBack)
     footer.push({ text: "⬅️ Back", callback_data: "transfer:back" });
   if (showCancel)
     footer.push({ text: "❌ Cancel", callback_data: "transfer:cancel" });
+
   if (footer.length > 0) buttons.push(footer);
   return { inline_keyboard: buttons };
 };
 
-const kbText = (showBack = false) => ({
-  inline_keyboard: [
-    showBack
-      ? { text: "⬅️ Back", callback_data: "transfer:back" }
-      : { text: "❌ Cancel", callback_data: "transfer:cancel" },
-  ],
-});
+const kbText = (showBack = false) => {
+  if (showBack) {
+    return {
+      inline_keyboard: [[{ text: "⬅️ Back", callback_data: "transfer:back" }]],
+    };
+  }
+  return {
+    inline_keyboard: [
+      [{ text: "❌ Cancel", callback_data: "transfer:cancel" }],
+    ],
+  };
+};
 
 const kbConfirm = () => ({
   inline_keyboard: [
-    [{ text: "✅ Save", callback_data: "transfer:save:ok" }],
+    [{ text: "✅ Simpan", callback_data: "transfer:save:ok" }],
     [{ text: "⬅️ Back", callback_data: "transfer:back" }],
     [{ text: "❌ Cancel", callback_data: "transfer:cancel" }],
   ],
@@ -105,23 +113,19 @@ export default {
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
-    const args = ctx.match?.trim();
-    const isAdmin = args === "admin";
-
     const rows = await fetchAllRows();
+
     const msg = await ctx.reply(
-      "🔁 Transfer Between Accounts\n\nSelect source account:",
+      "🔁 Transfer Antar Akun\n\nPilih akun asal:",
       {
         reply_markup: kbList(OPTIONS.akun, "transfer:akunAsal", false, true),
-      },
+      }
     );
 
     states.set(ctx.from.id, {
       step: "akunAsal",
       history: [],
       rows,
-      isAdmin,
-      adminFee: 0,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
     });
@@ -141,7 +145,7 @@ export default {
 
     if (data === "transfer:cancel") {
       states.delete(ctx.from.id);
-      return edit("❌ Transfer cancelled.");
+      return edit("❌ Transfer dibatalkan.");
     }
 
     if (data === "transfer:back") {
@@ -162,8 +166,8 @@ export default {
       if (value === state.akunAsal) {
         state.history.pop();
         return edit(
-          "❌ Source and destination cannot be the same.",
-          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false),
+          "❌ Akun asal dan tujuan tidak boleh sama.\n\nPilih akun tujuan:",
+          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false)
         );
       }
       state.akunTujuan = value;
@@ -176,29 +180,24 @@ export default {
       const asal = getLastSaldo(state.rows, state.akunAsal);
       const tujuan = getLastSaldo(state.rows, state.akunTujuan);
 
-      const totalDeduction = state.jumlah + state.adminFee;
-
-      if (asal.saldo < totalDeduction) {
-        return edit("❌ Insufficient balance.");
+      if (asal.saldo < state.jumlahKirim) {
+        return edit("❌ Saldo akun asal tidak mencukupi.");
       }
 
-      const newAsalSaldo = asal.saldo - totalDeduction;
-      const newTujuanSaldo = tujuan.saldo + state.jumlah;
-
-      const rowsToInsert = [
+      await appendRows([
         [
           "Pengeluaran",
           "Transfer",
           "Antar Akun",
           state.deskripsi,
-          state.jumlah,
+          state.jumlahKirim,
           asal.mataUang,
           state.akunAsal,
           "Transfer",
           asal.saldo,
-          newAsalSaldo,
+          asal.saldo - state.jumlahKirim,
           state.tag,
-          state.catatan,
+          `Admin: ${state.admin} | ${state.catatan}`,
           now,
           now,
         ],
@@ -207,51 +206,40 @@ export default {
           "Transfer",
           "Antar Akun",
           state.deskripsi,
-          state.jumlah,
+          state.jumlahTerima,
           tujuan.mataUang,
           state.akunTujuan,
           "Transfer",
           tujuan.saldo,
-          newTujuanSaldo,
+          tujuan.saldo + state.jumlahTerima,
           state.tag,
-          state.catatan,
+          `Admin: ${state.admin} | ${state.catatan}`,
           now,
           now,
         ],
-      ];
+      ]);
 
-      if (state.adminFee > 0) {
-        rowsToInsert.push([
-          "Pengeluaran",
-          "Biaya",
-          "Admin Transfer",
-          "Transfer Admin Fee",
-          state.adminFee,
-          asal.mataUang,
-          state.akunAsal,
-          "Transfer",
-          asal.saldo - state.jumlah,
-          newAsalSaldo,
-          state.tag,
-          state.catatan,
-          now,
-          now,
-        ]);
-      }
-
-      await appendRows(rowsToInsert);
       states.delete(ctx.from.id);
 
       return edit(
-        `✅ TRANSFER SUCCESS
+`✅ TRANSFER BERHASIL DISIMPAN
 
-Amount: ${asal.mataUang}${format(state.jumlah)}
-Admin Fee: ${asal.mataUang}${format(state.adminFee)}
+Deskripsi: ${state.deskripsi}
 
-From: ${state.akunAsal}
-To: ${state.akunTujuan}
+Jumlah Kirim: ${asal.mataUang}${format(state.jumlahKirim)}
+Jumlah Diterima: ${asal.mataUang}${format(state.jumlahTerima)}
+Biaya Admin (Auto): ${asal.mataUang}${format(state.admin)}
 
-Time: ${new Date().toLocaleString("id-ID")}`,
+Dari: ${state.akunAsal}
+Saldo: ${format(asal.saldo)} → ${format(asal.saldo - state.jumlahKirim)}
+
+Ke: ${state.akunTujuan}
+Saldo: ${format(tujuan.saldo)} → ${format(tujuan.saldo + state.jumlahTerima)}
+
+Tag: ${state.tag}
+Catatan: ${state.catatan}
+
+🕒 ${new Date().toLocaleString("id-ID")}`
       );
     }
   },
@@ -265,16 +253,27 @@ Time: ${new Date().toLocaleString("id-ID")}`,
 
     if (state.step === "deskripsi") {
       state.deskripsi = ctx.message.text;
-      state.step = "jumlah";
-    } else if (state.step === "jumlah") {
-      state.jumlah = toNumber(ctx.message.text);
-      state.step = state.isAdmin ? "admin" : "tag";
-    } else if (state.step === "admin") {
-      state.adminFee = toNumber(ctx.message.text) || 0;
+      state.step = "jumlahKirim";
+
+    } else if (state.step === "jumlahKirim") {
+      state.jumlahKirim = toNumber(ctx.message.text);
+      state.step = "jumlahTerima";
+
+    } else if (state.step === "jumlahTerima") {
+      state.jumlahTerima = toNumber(ctx.message.text);
+
+      if (state.jumlahTerima > state.jumlahKirim) {
+        state.history.pop();
+        return ctx.reply("❌ Jumlah diterima tidak boleh lebih besar dari jumlah kirim.");
+      }
+
+      state.admin = state.jumlahKirim - state.jumlahTerima;
       state.step = "tag";
+
     } else if (state.step === "tag") {
       state.tag = ctx.message.text;
       state.step = "catatan";
+
     } else if (state.step === "catatan") {
       state.catatan = ctx.message.text;
       state.step = "confirm";
@@ -284,10 +283,13 @@ Time: ${new Date().toLocaleString("id-ID")}`,
   },
 
   async render(ctx, state) {
-    const edit = (text, markup) =>
-      ctx.api.editMessageText(state.chatId, state.messageId, text, {
-        reply_markup: markup,
-      });
+    const edit = async (text, markup) => {
+      try {
+        await ctx.api.editMessageText(state.chatId, state.messageId, text, {
+          reply_markup: markup,
+        });
+      } catch {}
+    };
 
     const asal = getLastSaldo(state.rows, state.akunAsal);
     const tujuan = getLastSaldo(state.rows, state.akunTujuan);
@@ -295,41 +297,52 @@ Time: ${new Date().toLocaleString("id-ID")}`,
     switch (state.step) {
       case "akunAsal":
         return edit(
-          "🔁 Transfer Between Accounts\n\nSelect source account:",
-          kbList(OPTIONS.akun, "transfer:akunAsal", false, true),
+          "🔁 Transfer Antar Akun\n\nPilih akun asal:",
+          kbList(OPTIONS.akun, "transfer:akunAsal", false, true)
         );
+
       case "akunTujuan":
         return edit(
-          "Select destination account:",
-          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false),
+          "Pilih akun tujuan:",
+          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false)
         );
+
       case "deskripsi":
-        return edit("Enter transfer description:", kbText(true));
-      case "jumlah":
-        return edit("Enter transfer amount:", kbText(true));
-      case "admin":
-        return edit("Enter admin fee:", kbText(true));
+        return edit("Masukkan deskripsi transfer:", kbText(true));
+
+      case "jumlahKirim":
+        return edit("Masukkan jumlah kirim:", kbText(true));
+
+      case "jumlahTerima":
+        return edit("Masukkan jumlah diterima:", kbText(true));
+
       case "tag":
-        return edit("Enter tag:", kbText(true));
+        return edit("Masukkan tag:", kbText(true));
+
       case "catatan":
-        return edit("Enter note:", kbText(true));
+        return edit("Masukkan catatan:", kbText(true));
+
       case "confirm":
         return edit(
-          `CONFIRM TRANSFER
+`🧾 KONFIRMASI TRANSFER
 
-Amount: ${asal.mataUang}${format(state.jumlah)}
-Admin Fee: ${asal.mataUang}${format(state.adminFee)}
+Deskripsi: ${state.deskripsi}
 
-From: ${state.akunAsal}
-Balance: ${format(asal.saldo)} → ${format(
-            asal.saldo - (state.jumlah + state.adminFee),
-          )}
+Jumlah Kirim: ${asal.mataUang}${format(state.jumlahKirim)}
+Jumlah Diterima: ${asal.mataUang}${format(state.jumlahTerima)}
+Biaya Admin (Auto): ${asal.mataUang}${format(state.admin)}
 
-To: ${state.akunTujuan}
-Balance: ${format(tujuan.saldo)} → ${format(tujuan.saldo + state.jumlah)}
+Dari: ${state.akunAsal}
+Saldo: ${format(asal.saldo)} → ${format(asal.saldo - state.jumlahKirim)}
 
-Proceed?`,
-          kbConfirm(),
+Ke: ${state.akunTujuan}
+Saldo: ${format(tujuan.saldo)} → ${format(tujuan.saldo + state.jumlahTerima)}
+
+Tag: ${state.tag}
+Catatan: ${state.catatan}
+
+Lanjutkan?`,
+          kbConfirm()
         );
     }
   },
