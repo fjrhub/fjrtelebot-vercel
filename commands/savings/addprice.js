@@ -28,6 +28,7 @@ export default {
   // HANDLE TEXT INPUT
   // ======================
   async handleText(ctx) {
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
     const userId = ctx.from.id;
     const state = userState.get(userId);
     if (!state) return;
@@ -47,7 +48,7 @@ export default {
       return ctx.api.editMessageText(
         ctx.chat.id,
         state.botMessageId,
-        "📊 Masukkan jumlah:"
+        "📊 Masukkan jumlah:",
       );
     }
 
@@ -58,7 +59,7 @@ export default {
         return ctx.api.editMessageText(
           ctx.chat.id,
           state.botMessageId,
-          "❌ Jumlah tidak valid\n\n📊 Masukkan jumlah:"
+          "❌ Jumlah tidak valid\n\n📊 Masukkan jumlah:",
         );
       }
 
@@ -66,7 +67,7 @@ export default {
       return ctx.api.editMessageText(
         ctx.chat.id,
         state.botMessageId,
-        "💰 Masukkan total harga:"
+        "💰 Masukkan total harga:",
       );
     }
 
@@ -77,7 +78,7 @@ export default {
         return ctx.api.editMessageText(
           ctx.chat.id,
           state.botMessageId,
-          "❌ Total harga tidak valid\n\n💰 Masukkan total harga:"
+          "❌ Total harga tidak valid\n\n💰 Masukkan total harga:",
         );
       }
 
@@ -85,7 +86,7 @@ export default {
       return ctx.api.editMessageText(
         ctx.chat.id,
         state.botMessageId,
-        "📦 Masukkan isi dus:"
+        "📦 Masukkan isi dus:",
       );
     }
 
@@ -96,7 +97,7 @@ export default {
         return ctx.api.editMessageText(
           ctx.chat.id,
           state.botMessageId,
-          "❌ Isi dus tidak valid\n\n📦 Masukkan isi dus:"
+          "❌ Isi dus tidak valid\n\n📦 Masukkan isi dus:",
         );
       }
 
@@ -123,7 +124,7 @@ Lanjutkan?`,
               ],
             ],
           },
-        }
+        },
       );
     }
   },

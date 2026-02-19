@@ -1,26 +1,25 @@
 export default {
   name: "cash",
   async execute(ctx) {
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
     try {
       const text = ctx.message.text.replace("/cash", "").trim();
 
       if (!text) {
         return ctx.reply(
-`Masukkan jumlah lembar uang untuk setiap pecahan:
+          `Masukkan jumlah lembar uang untuk setiap pecahan:
 Format:
-/cash 4 2 1 5 7 1 1 2`
+/cash 4 2 1 5 7 1 1 2`,
         );
       }
 
       const numbers = text
         .split(/[\s,]+/)
-        .map(v => Number(v))
-        .filter(v => !isNaN(v));
+        .map((v) => Number(v))
+        .filter((v) => !isNaN(v));
 
       if (numbers.length !== 8) {
-        return ctx.reply(
-"Harus memasukkan 8 angka sesuai urutan pecahan."
-        );
+        return ctx.reply("Harus memasukkan 8 angka sesuai urutan pecahan.");
       }
 
       const pecahan = [100000, 50000, 20000, 10000, 5000, 2000, 1000, 500];
@@ -30,8 +29,7 @@ Format:
         total += pecahan[i] * numbers[i];
       }
 
-      const hasil =
-`Masukkan jumlah lembar uang untuk setiap pecahan:
+      const hasil = `Masukkan jumlah lembar uang untuk setiap pecahan:
 100.000: ${numbers[0]}
 50.000: ${numbers[1]}
 20.000: ${numbers[2]}
