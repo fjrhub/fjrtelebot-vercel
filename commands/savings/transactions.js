@@ -43,6 +43,7 @@ const formatNumber = (n) =>
 const formatDate = (iso) => {
   if (!iso) return "-";
   return new Date(iso).toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
