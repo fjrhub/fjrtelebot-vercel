@@ -110,11 +110,11 @@ export default {
                   e.error_code === 429 ||
                   e.description?.includes("Too Many Requests")
                 ) {
-                  await delay(5000);
+                  await delay(1000);
                 }
               }
 
-              await delay(1500);
+              await delay(500);
             }
           }
         } catch (err) {
@@ -161,7 +161,7 @@ export default {
             }
 
             // 1.5 second delay between photo submission batches
-            await delay(1500);
+            await delay(500);
           }
           return;
         }
@@ -227,7 +227,7 @@ export default {
             }));
 
             await ctx.api.sendMediaGroup(chatId, mediaGroup);
-            await delay(1500); // Small delay for Telegram rate limit
+            await delay(500); // Small delay for Telegram rate limit
           }
 
           return;
@@ -414,7 +414,7 @@ export default {
               media: url,
             }));
             await ctx.api.sendMediaGroup(chatId, mediaGroup);
-            await delay(1500);
+            await delay(500);
           }
           return;
         }
