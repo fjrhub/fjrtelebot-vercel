@@ -422,9 +422,9 @@ export default {
       };
 
       const enableStatus = {
-        tikTok: { siputzx: true, archive: true, vreden: true },
-        instagram: { siputzx: true, archive: true, vreden: true },
-        facebook: { siputzx: true, archive: true, vreden: true },
+        tikTok: { siputzx: false, archive: false, vreden: false },
+        instagram: { siputzx: false, archive: false, vreden: false },
+        facebook: { siputzx: false, archive: false, vreden: false },
       };
 
       const apis = [];
