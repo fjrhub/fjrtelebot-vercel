@@ -27,7 +27,7 @@ export default {
       const tiktokRegex =
         /^(?:https?:\/\/)?(?:www\.|vm\.|vt\.)?tiktok\.com\/[^\s]+$/i;
       const instagramRegex =
-        /^(?:https?:\/\/)?(?:www\.)?instagram\.com\/(reel|p|tv)\/[A-Za-z0-9_-]+\/?(?:\?[^ ]*)?$/i;
+        /^(?:https?:\/\/)?(?:www\.|web\.)?instagram\.com\/(reel|p|tv)\/[A-Za-z0-9_-]+\/?(?:\?[^ ]*)?$/i;
       const facebookRegex =
         /^(?:https?:\/\/)?(?:www\.|web\.)?facebook\.com\/(?:share\/(?:r|v|p)\/|reel\/|watch\?v=|permalink\.php\?story_fbid=|[^\/]+\/posts\/|video\.php\?v=)[^\s]+$/i;
 
@@ -226,7 +226,14 @@ export default {
               ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
             }));
 
-            await ctx.api.sendMediaGroup(chatId, mediaGroup);
+            try {
+              await ctx.api.sendMediaGroup(chatId, mediaGroup);
+            } catch (err) {
+              console.error(
+                "⚠️ Failed to send photo group:",
+                err.description || err.message
+              );
+            }
             await delay(1500); // Small delay for Telegram rate limit
           }
 
@@ -375,10 +382,17 @@ export default {
             ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
           }));
 
-          await ctx.api.sendMediaGroup(chatId, mediaGroup);
+          try {
+            await ctx.api.sendMediaGroup(chatId, mediaGroup);
+          } catch (err) {
+            console.error(
+              "⚠️ Failed to send photo group:",
+              err.description || err.message
+            );
+          }
           if (groups.length > 1) await delay(1500); // delay between batches
         }
-        throw new Error("API 2 returned no valid downloadable content.");
+        return; // Tambahkan return untuk mengakhiri handler
       };
 
       const igHandler3 = async (ctx, chatId, data) => {
@@ -413,7 +427,14 @@ export default {
               type: "photo",
               media: url,
             }));
-            await ctx.api.sendMediaGroup(chatId, mediaGroup);
+            try {
+              await ctx.api.sendMediaGroup(chatId, mediaGroup);
+            } catch (err) {
+              console.error(
+                "⚠️ Failed to send photo group:",
+                err.description || err.message
+              );
+            }
             await delay(1500);
           }
           return;
