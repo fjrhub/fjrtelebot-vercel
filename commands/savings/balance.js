@@ -22,14 +22,6 @@ function sheetsClient() {
 ========================= */
 const formatRp = (n) => "Rp" + Math.round(n).toLocaleString("id-ID");
 
-const formatUSDT = (n) => {
-  const formattedNumber = Number(n).toLocaleString("id-ID", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-  return `${formattedNumber} USDT`;
-};
-
 function getJakartaTime() {
   const now = new Date(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" })
@@ -52,7 +44,7 @@ async function getAllAccounts() {
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet2!A2:C", // S=Account | T=Saldo | U=MataUang
+    range: "Sheet2!A2:C",
   });
 
   return res.data.values || [];
@@ -73,22 +65,13 @@ export default {
     }
 
     let totalRp = 0;
-    let totalUSDT = 0;
 
-    const accountMessages = rows.map(([akun, rawSaldo, mataUang]) => {
+    const accountMessages = rows.map(([akun, rawSaldo]) => {
       let saldo = Number(rawSaldo);
 
       // #N/A, kosong, invalid → 0
       if (!rawSaldo || isNaN(saldo)) saldo = 0;
 
-      const currency = (mataUang || "Rp").toUpperCase();
-
-      if (currency === "USDT") {
-        totalUSDT += saldo;
-        return `🧾 Account : ${akun}\n💰 Balance: ${formatUSDT(saldo)}`;
-      }
-
-      // default Rp
       totalRp += saldo;
       return `🧾 Account : ${akun}\n💰 Balance: ${formatRp(saldo)}`;
     });
@@ -99,8 +82,7 @@ export default {
 ${accountMessages.join("\n\n")}
 
 ━━━━━━━━━━━━
-🔢 Total IDR : ${formatRp(totalRp)}
-🔢 Total USDT: ${formatUSDT(totalUSDT)}
+🔢 Total : ${formatRp(totalRp)}
 📅 Last updated: ${getJakartaTime()}
 `.trim();
 
