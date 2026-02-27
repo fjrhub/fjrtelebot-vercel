@@ -17,7 +17,7 @@ export default {
     // === GLOBAL LOCK TO PREVENT DOUBLE EXECUTION ===
     if (processingUsers.has(userId)) {
       await ctx.reply(
-        "⏳ Please wait, we are processing your previous request..."
+        "⏳ Please wait, we are processing your previous request...",
       );
       return;
     }
@@ -30,6 +30,10 @@ export default {
         /^(?:https?:\/\/)?(?:www\.)?instagram\.com\/(reel|p|tv)\/[A-Za-z0-9_-]+\/?(?:\?[^ ]*)?$/i;
       const facebookRegex =
         /^(?:https?:\/\/)?(?:www\.|web\.)?facebook\.com\/(?:share\/(?:r|v|p)\/|reel\/|watch\?v=|permalink\.php\?story_fbid=|[^\/]+\/posts\/|video\.php\?v=)[^\s]+$/i;
+
+      const username = ctx.from.username;
+      const firstName = ctx.from.first_name;
+      const mention = username ? `@${username}` : firstName;
 
       const isTikTok = tiktokRegex.test(input);
       const isInstagram = instagramRegex.test(input);
@@ -54,8 +58,8 @@ export default {
         n >= 1_000_000
           ? (n / 1_000_000).toFixed(1) + "M"
           : n >= 1_000
-          ? (n / 1_000).toFixed(1) + "K"
-          : n.toString();
+            ? (n / 1_000).toFixed(1) + "K"
+            : n.toString();
 
       // Platform detection helper
       const getPlatformFromUrl = () => {
@@ -89,7 +93,7 @@ export default {
           if (videos.length) {
             const firstVideo = videos[0];
             await ctx.api.sendVideo(chatId, firstVideo, {
-              caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}`,
+              caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}\n 👤 Request by: ${mention}`,
               parse_mode: "Markdown",
             });
             return;
@@ -135,7 +139,7 @@ export default {
           `Downloads: ${toNumberFormat(md.download)}`,
         ].join("\n");
 
-        const caption = `Duration: ${md.durasi}s\n\n${statsOnly}\n\n🔗 Source: Archive\n📱 Platform: ${platform}`;
+        const caption = `Duration: ${md.durasi}s\n\n${statsOnly}\n\n🔗 Source: Archive\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`;
 
         // Jika ada image slide
         if (
@@ -156,7 +160,7 @@ export default {
             } catch (err) {
               console.error(
                 "⚠️ Failed to send media group:",
-                err.description || err.message
+                err.description || err.message,
               );
             }
 
@@ -177,7 +181,7 @@ export default {
           } catch (err) {
             console.error(
               "⚠️ Failed to send video:",
-              err.description || err.message
+              err.description || err.message,
             );
           }
           return; // without delay in the video section
@@ -197,7 +201,7 @@ export default {
         const video = Array.isArray(data.data)
           ? data.data.find(
               (item) =>
-                item.type === "nowatermark" || item.type === "nowatermark_hd"
+                item.type === "nowatermark" || item.type === "nowatermark_hd",
             )
           : null;
 
@@ -210,13 +214,13 @@ export default {
           `⬇️ Downloads: ${stats.download ?? "?"}`,
         ].join("\n");
 
-        const caption = `${statsText}\n\n🔗 Source: Vreden\n📱 Platform: ${platform}`;
+        const caption = `${statsText}\n\n🔗 Source: Vreden\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`;
 
         // If the photo
         if (photos.length > 0) {
           const groups = chunkArray(
             photos.map((p) => p.url),
-            10
+            10,
           );
 
           for (const grp of groups) {
@@ -251,12 +255,12 @@ export default {
         if (!data || !Array.isArray(data.data))
           throw new Error("Invalid FB API 1 format.");
         const hdMp4Video = data.data.find(
-          (item) => item.format === "mp4" && item.resolution === "HD"
+          (item) => item.format === "mp4" && item.resolution === "HD",
         );
         if (!hdMp4Video?.url) throw new Error("HD MP4 URL not found.");
 
         await ctx.api.sendVideo(chatId, hdMp4Video.url, {
-          caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}`,
+          caption: `🔗 Source: Siputzx\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`,
           parse_mode: "Markdown",
         });
       };
@@ -267,7 +271,7 @@ export default {
         if (!videoUrl) throw new Error("No HD video URL found in API 2.");
 
         await ctx.api.sendVideo(chatId, videoUrl, {
-          caption: `🔗 Source: Archive\n📱 Platform: ${platform}`,
+          caption: `🔗 Source: Archive\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`,
           parse_mode: "Markdown",
         });
       };
@@ -283,7 +287,7 @@ export default {
           throw new Error("No valid video URL found from API 3 (Vreden).");
 
         await ctx.api.sendVideo(chatId, videoUrl, {
-          caption: `🔗 Source: Vreden\n📱 Platform: ${platform}`,
+          caption: `🔗 Source: Vreden\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`,
           parse_mode: "Markdown",
           ...(thumb ? { thumbnail: thumb } : {}),
         });
@@ -294,8 +298,8 @@ export default {
         const results = Array.isArray(data)
           ? data
           : Array.isArray(data.data)
-          ? data.data
-          : [];
+            ? data.data
+            : [];
 
         if (!results.length)
           throw new Error("Invalid or empty API data format.");
@@ -308,7 +312,7 @@ export default {
 
         if (video) {
           await ctx.api.sendVideo(chatId, video, {
-            caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}`,
+            caption: `🔗 Source: Siputzx\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`,
             parse_mode: "Markdown",
           });
           return;
@@ -318,7 +322,7 @@ export default {
           const maxSend = photos.slice(0, 10);
           await ctx.api.sendMediaGroup(
             chatId,
-            maxSend.map((url) => ({ type: "photo", media: url }))
+            maxSend.map((url) => ({ type: "photo", media: url })),
           );
           return;
         }
@@ -330,7 +334,7 @@ export default {
         // 🔹 Initial data validation
         if (!data || typeof data !== "object") {
           throw new Error(
-            "Invalid IG API 2 format: Root data missing or invalid."
+            "Invalid IG API 2 format: Root data missing or invalid.",
           );
         }
 
@@ -342,8 +346,8 @@ export default {
         const mediaUrls = Array.isArray(result.url)
           ? result.url.filter(Boolean)
           : typeof result.url === "string"
-          ? [result.url]
-          : [];
+            ? [result.url]
+            : [];
 
         if (!mediaUrls.length) {
           throw new Error("API 2 returned empty or invalid URLs.");
@@ -355,7 +359,7 @@ export default {
         const comments = result.comment || 0;
 
         // 🔹 Create a simple caption (emoji ❤️ 💬)
-        const caption = `${likes > 0 ? `❤️ ${toNumberFormat(likes)}` : ''}${comments > 0 ? `   💬 ${toNumberFormat(comments)}` : ''}\n\n🔗 Source: Archive\n📱 Platform: ${platform}`;
+        const caption = `${likes > 0 ? `❤️ ${toNumberFormat(likes)}` : ""}${comments > 0 ? `   💬 ${toNumberFormat(comments)}` : ""}\n\n🔗 Source: Archive\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`;
 
         // 🔹
         if (isVideo) {
@@ -395,7 +399,7 @@ export default {
         // Send video if any
         if (videos.length > 0) {
           await ctx.api.sendVideo(chatId, videos[0].url, {
-            caption: `🔗 Source: Vreden\n📱 Platform: ${platform}`,
+            caption: `🔗 Source: Vreden\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`,
             parse_mode: "Markdown",
             supports_streaming: true,
           });
@@ -406,7 +410,7 @@ export default {
         if (images.length > 0) {
           const groups = chunkArray(
             images.map((img) => img.url),
-            10
+            10,
           );
           for (const group of groups) {
             const mediaGroup = group.map((url) => ({
@@ -434,7 +438,7 @@ export default {
           active.siputzx && {
             url: createUrl(
               "siputzx",
-              `/api/d/tiktok/v2?url=${encodeURIComponent(input)}`
+              `/api/d/tiktok/v2?url=${encodeURIComponent(input)}`,
             ),
             handler: tthandler1,
             label: "Siputzx - TikTok",
@@ -442,7 +446,7 @@ export default {
           active.archive && {
             url: createUrl(
               "archive",
-              `/api/download/tiktok?url=${encodeURIComponent(input)}`
+              `/api/download/tiktok?url=${encodeURIComponent(input)}`,
             ),
             handler: tthandler2,
             label: "Archive - TikTok",
@@ -450,11 +454,11 @@ export default {
           active.vreden && {
             url: createUrl(
               "vreden",
-              `/api/v1/download/tiktok?url=${encodeURIComponent(input)}`
+              `/api/v1/download/tiktok?url=${encodeURIComponent(input)}`,
             ),
             handler: tthandler3,
             label: "Vreden - TikTok",
-          }
+          },
         );
       }
 
@@ -464,7 +468,7 @@ export default {
           active.siputzx && {
             url: createUrl(
               "siputzx",
-              `/api/d/igdl?url=${encodeURIComponent(input)}`
+              `/api/d/igdl?url=${encodeURIComponent(input)}`,
             ),
             handler: igHandler1,
             label: "Siputzx - Instagram",
@@ -472,7 +476,7 @@ export default {
           active.archive && {
             url: createUrl(
               "archive",
-              `/api/download/instagram?url=${encodeURIComponent(input)}`
+              `/api/download/instagram?url=${encodeURIComponent(input)}`,
             ),
             handler: igHandler2,
             label: "Archive - Instagram",
@@ -480,11 +484,11 @@ export default {
           active.vreden && {
             url: createUrl(
               "vreden",
-              `/api/v1/download/instagram?url=${encodeURIComponent(input)}`
+              `/api/v1/download/instagram?url=${encodeURIComponent(input)}`,
             ),
             handler: igHandler3,
             label: "Vreden - Instagram",
-          }
+          },
         );
       }
 
@@ -494,7 +498,7 @@ export default {
           active.siputzx && {
             url: createUrl(
               "siputzx",
-              `/api/d/facebook?url=${encodeURIComponent(input)}`
+              `/api/d/facebook?url=${encodeURIComponent(input)}`,
             ),
             handler: fbHandler1,
             label: "Siputzx - Facebook",
@@ -502,7 +506,7 @@ export default {
           active.archive && {
             url: createUrl(
               "archive",
-              `/api/download/facebook?url=${encodeURIComponent(input)}`
+              `/api/download/facebook?url=${encodeURIComponent(input)}`,
             ),
             handler: fbHandler2,
             label: "Archive - Facebook",
@@ -510,11 +514,11 @@ export default {
           active.vreden && {
             url: createUrl(
               "vreden",
-              `/api/v1/download/facebook?url=${encodeURIComponent(input)}`
+              `/api/v1/download/facebook?url=${encodeURIComponent(input)}`,
             ),
             handler: fbHandler3,
             label: "Vreden - Facebook",
-          }
+          },
         );
       }
 
@@ -560,10 +564,10 @@ export default {
 
             const duration = ((Date.now() - start) / 1000).toFixed(2);
             console.warn(
-              `⚠️ ${api.label} failed after ${duration}s: ${err.message}`
+              `⚠️ ${api.label} failed after ${duration}s: ${err.message}`,
             );
           }
-        })
+        }),
       );
 
       if (!sent) {
