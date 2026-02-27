@@ -93,7 +93,7 @@ export default {
           if (videos.length) {
             const firstVideo = videos[0];
             await ctx.api.sendVideo(chatId, firstVideo, {
-              caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}\n 👤 Request by: ${mention}`,
+              caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
               parse_mode: "Markdown",
             });
             return;
@@ -139,7 +139,7 @@ export default {
           `Downloads: ${toNumberFormat(md.download)}`,
         ].join("\n");
 
-        const caption = `Duration: ${md.durasi}s\n\n${statsOnly}\n\n🔗 Source: Archive\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`;
+        const caption = `Duration: ${md.durasi}s\n\n${statsOnly}\n\n🔗 Source: Archive\n📱 Platform: ${platform}\n👤 Request by: ${mention}`;
 
         // Jika ada image slide
         if (
@@ -214,7 +214,7 @@ export default {
           `⬇️ Downloads: ${stats.download ?? "?"}`,
         ].join("\n");
 
-        const caption = `${statsText}\n\n🔗 Source: Vreden\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`;
+        const caption = `${statsText}\n\n🔗 Source: Vreden\n📱 Platform: ${platform}\n👤 Request by: ${mention}`;
 
         // If the photo
         if (photos.length > 0) {
@@ -260,7 +260,7 @@ export default {
         if (!hdMp4Video?.url) throw new Error("HD MP4 URL not found.");
 
         await ctx.api.sendVideo(chatId, hdMp4Video.url, {
-          caption: `🔗 Source: Siputzx\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`,
+          caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
           parse_mode: "Markdown",
         });
       };
@@ -271,7 +271,7 @@ export default {
         if (!videoUrl) throw new Error("No HD video URL found in API 2.");
 
         await ctx.api.sendVideo(chatId, videoUrl, {
-          caption: `🔗 Source: Archive\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`,
+          caption: `🔗 Source: Archive\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
           parse_mode: "Markdown",
         });
       };
@@ -287,7 +287,7 @@ export default {
           throw new Error("No valid video URL found from API 3 (Vreden).");
 
         await ctx.api.sendVideo(chatId, videoUrl, {
-          caption: `🔗 Source: Vreden\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`,
+          caption: `🔗 Source: Vreden\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
           parse_mode: "Markdown",
           ...(thumb ? { thumbnail: thumb } : {}),
         });
@@ -312,7 +312,7 @@ export default {
 
         if (video) {
           await ctx.api.sendVideo(chatId, video, {
-            caption: `🔗 Source: Siputzx\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`,
+            caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
             parse_mode: "Markdown",
           });
           return;
@@ -359,7 +359,7 @@ export default {
         const comments = result.comment || 0;
 
         // 🔹 Create a simple caption (emoji ❤️ 💬)
-        const caption = `${likes > 0 ? `❤️ ${toNumberFormat(likes)}` : ""}${comments > 0 ? `   💬 ${toNumberFormat(comments)}` : ""}\n\n🔗 Source: Archive\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`;
+        const caption = `${likes > 0 ? `❤️ ${toNumberFormat(likes)}` : ""}${comments > 0 ? `   💬 ${toNumberFormat(comments)}` : ""}\n\n🔗 Source: Archive\n📱 Platform: ${platform}\n👤 Request by: ${mention}`;
 
         // 🔹
         if (isVideo) {
@@ -399,7 +399,7 @@ export default {
         // Send video if any
         if (videos.length > 0) {
           await ctx.api.sendVideo(chatId, videos[0].url, {
-            caption: `🔗 Source: Vreden\n📱 Platform: ${platform} \n 👤 Request by: ${mention}`,
+            caption: `🔗 Source: Vreden\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
             parse_mode: "Markdown",
             supports_streaming: true,
           });
