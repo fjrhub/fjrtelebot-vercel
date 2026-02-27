@@ -24,7 +24,7 @@ const formatRp = (n) => "Rp" + Math.round(n).toLocaleString("id-ID");
 
 function getJakartaTime() {
   const now = new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" })
+    new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }),
   );
 
   const dd = String(now.getDate()).padStart(2, "0");
@@ -44,7 +44,7 @@ async function getAllAccounts() {
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet2!A2:C",
+    range: "Sheet2!A2:B",
   });
 
   return res.data.values || [];
