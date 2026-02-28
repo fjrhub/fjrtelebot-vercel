@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
-
+import { InputFile } from "grammy";
 import Groq from "groq-sdk";
 
 /* =========================
@@ -11,7 +11,7 @@ if (!process.env.GROQ_API_KEY) {
 }
 
 /* =========================
-   GROQ CLIENT (SINGLETON)
+   GROQ CLIENT
 ========================= */
 const groq =
   global._groq ??
@@ -22,13 +22,21 @@ const groq =
 global._groq = groq;
 
 /* =========================
-   GROQ HANDLER (NO HISTORY)
+   MEMORY HISTORY
 ========================= */
-async function sendToGroq(userMessage) {
+global.aiHistory = global.aiHistory || {};
+
+// maksimal history yang disimpan
+const MAX_HISTORY = 10;
+
+/* =========================
+   GROQ HANDLER
+========================= */
+async function sendToGroq(messages) {
   try {
     const completion = await groq.chat.completions.create({
       model: "compound-beta",
-      messages: [{ role: "user", content: userMessage }],
+      messages,
       temperature: 1,
       max_tokens: 256,
     });
@@ -44,7 +52,7 @@ async function sendToGroq(userMessage) {
 }
 
 /* =========================
-   COMMAND (GRAMMY)
+   COMMAND
 ========================= */
 export default {
   name: "ai",
@@ -54,35 +62,79 @@ export default {
     const text = ctx.message?.text?.trim();
     if (!text) return;
 
+    const chatId = ctx.chat.id;
+
+    // init history
+    if (!global.aiHistory[chatId]) {
+      global.aiHistory[chatId] = [];
+    }
+
+    /* =========================
+       /ai history
+    ========================= */
+    if (text === "/ai history") {
+      const history = global.aiHistory[chatId];
+
+      if (!history.length) {
+        return ctx.reply("History kosong.");
+      }
+
+      const content = history
+        .map((msg) => `${msg.role}: ${msg.content}`)
+        .join("\n\n");
+
+      const buffer = Buffer.from(content, "utf-8");
+
+      return ctx.replyWithDocument(new InputFile(buffer, "ai-history.txt"));
+    }
+
     const replyText = ctx.message?.reply_to_message?.text;
     const inputText = text.replace(/^\/ai\s*/i, "").trim();
 
-    // jika user hanya kirim /ai tanpa apa apa
     if (!replyText && !inputText) {
-      return ctx.reply("Usage:\n/ai pertanyaan\natau reply chat lalu /ai");
+      return ctx.reply("Gunakan:\n/ai pertanyaan\natau reply chat lalu /ai");
     }
 
-    let finalPrompt;
+    let prompt;
 
     if (replyText && inputText) {
-      finalPrompt = `${inputText}\n\n${replyText}`;
+      prompt = `${inputText}\n\n${replyText}`;
     } else if (replyText) {
-      finalPrompt = replyText;
+      prompt = replyText;
     } else {
-      finalPrompt = inputText;
+      prompt = inputText;
     }
 
     try {
       await ctx.replyWithChatAction("typing");
 
-      const reply = await sendToGroq(finalPrompt);
+      const history = global.aiHistory[chatId];
 
-      await ctx.reply(reply.slice(0, 4096), {
-        parse_mode: "Markdown",
+      history.push({
+        role: "user",
+        content: prompt,
       });
+
+      // batasi history
+      if (history.length > MAX_HISTORY) {
+        history.shift();
+      }
+
+      const reply = await sendToGroq(history);
+
+      history.push({
+        role: "assistant",
+        content: reply,
+      });
+
+      if (history.length > MAX_HISTORY) {
+        history.shift();
+      }
+
+      await ctx.reply(reply.slice(0, 4096));
     } catch (err) {
       console.error("AI COMMAND ERROR:", err);
-      ctx.reply("❌ An unexpected error occurred.");
+      ctx.reply("❌ Error saat menjalankan AI.");
     }
   },
 };
