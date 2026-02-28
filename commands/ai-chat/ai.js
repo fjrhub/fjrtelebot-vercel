@@ -33,37 +33,49 @@ async function sendToGroq(userMessage) {
       max_tokens: 256,
     });
 
-    return completion.choices?.[0]?.message?.content || "❌ No response received from the AI.";
+    return (
+      completion.choices?.[0]?.message?.content ||
+      "❌ No response received from the AI."
+    );
   } catch (err) {
     console.error("GROQ ERROR:", err);
     return "❌ Failed to get a response from the AI.";
   }
 }
 
-
 /* =========================
    COMMAND (GRAMMY)
 ========================= */
 export default {
   name: "ai",
-  description: "AI chat (Markdown output)",
+  description: "AI chat",
 
   async execute(ctx) {
     const text = ctx.message?.text?.trim();
     if (!text) return;
 
-    // /ai
-    if (text === "/ai") {
-      return ctx.reply("*AI is active*\n\nUsage:\n`/ai <your question>`", {
-        parse_mode: "Markdown",
-      });
+    const replyText = ctx.message?.reply_to_message?.text;
+    const inputText = text.replace(/^\/ai\s*/i, "").trim();
+
+    // jika user hanya kirim /ai tanpa apa apa
+    if (!replyText && !inputText) {
+      return ctx.reply("Usage:\n/ai pertanyaan\natau reply chat lalu /ai");
     }
 
-    const input = text.replace(/^\/ai\s*/i, "");
-    if (!input) return;
+    let finalPrompt;
+
+    if (replyText && inputText) {
+      finalPrompt = `${inputText}\n\n${replyText}`;
+    } else if (replyText) {
+      finalPrompt = replyText;
+    } else {
+      finalPrompt = inputText;
+    }
 
     try {
-      const reply = await sendToGroq(input);
+      await ctx.replyWithChatAction("typing");
+
+      const reply = await sendToGroq(finalPrompt);
 
       await ctx.reply(reply.slice(0, 4096), {
         parse_mode: "Markdown",
