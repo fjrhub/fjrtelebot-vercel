@@ -98,7 +98,7 @@ async function sendMarkdownMessage(ctx, text) {
 async function sendToGroq(messages) {
     try {
         const completion = await groq.chat.completions.create({
-            model: "compound-beta",
+            model: "moonshotai/kimi-k2-instruct-0905",
             messages,
             temperature: 1,
             max_tokens: 256,
