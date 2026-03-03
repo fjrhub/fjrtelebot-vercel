@@ -48,9 +48,7 @@ function formatCurrency(amount, currency = "Rp") {
 }
 
 function validateAccount(rows, accountName) {
-  const filtered = rows.filter(
-    (row) => row[6]?.toLowerCase() === accountName
-  );
+  const filtered = rows.filter((row) => row[6]?.toLowerCase() === accountName);
 
   if (!filtered.length) {
     return {
@@ -60,46 +58,92 @@ function validateAccount(rows, accountName) {
   }
 
   const transactions = filtered.sort(
-    (a, b) => new Date(a[12]) - new Date(b[12])
+    (a, b) => new Date(a[12]) - new Date(b[12]),
   );
 
   let content = `AKUN: ${accountName.toUpperCase()}\n`;
   content += "-------------------------------------\n";
 
   let hasError = false;
+  let runningBalance = null; // Menyimpan saldo hasil kalkulasi sistem (bukan dari sheet)
 
   transactions.forEach((t, index) => {
     const jenis = t[0];
     const jumlah = Number(t[4]) || 0;
     const mataUang = t[5] || "Rp";
-    const saldoSebelum = Number(t[8]) || 0;
-    const saldoSesudah = Number(t[9]) || 0;
+    const saldoSebelumSheet = Number(t[8]) || 0; // Hanya untuk referensi display/transaksi pertama
+    const saldoSesudahSheet = Number(t[9]) || 0; // Target validasi
 
-    let hasil;
+    let expectedBalance;
     let operator;
+    let displayStartBalance;
 
-    if (jenis === "Pemasukan") {
-      hasil = saldoSebelum + jumlah;
-      operator = "+";
-    } else if (jenis === "Pengeluaran") {
-      hasil = saldoSebelum - jumlah;
-      operator = "-";
-    } else if (jenis === "Initial") {
-      hasil = jumlah;
-      operator = "=";
+    // --- LOGIKA UTAMA LOOPING ---
+    if (index === 0) {
+      // Transaksi Pertama: Inisialisasi saldo awal
+      if (jenis === "Initial") {
+        runningBalance = jumlah;
+        expectedBalance = jumlah;
+        operator = "=";
+        displayStartBalance = 0;
+      } else {
+        // Jika bukan Initial, kita terpaksa mengambil saldo awal dari sheet sebagai patokan start
+        runningBalance = saldoSebelumSheet;
+        displayStartBalance = saldoSebelumSheet;
+
+        if (jenis === "Pemasukan") {
+          expectedBalance = runningBalance + jumlah;
+          operator = "+";
+        } else if (jenis === "Pengeluaran") {
+          expectedBalance = runningBalance - jumlah;
+          operator = "-";
+        } else {
+          expectedBalance = runningBalance;
+          operator = "?";
+        }
+      }
     } else {
-      hasil = 0;
-      operator = "?";
+      // Transaksi ke-2 dan seterusnya:
+      // PENTING: Gunakan 'runningBalance' (hasil hitungan sistem sebelumnya),
+      // JANGAN gunakan 'saldoSebelumSheet' agar validasi akurat.
+
+      displayStartBalance = runningBalance;
+
+      if (jenis === "Pemasukan") {
+        expectedBalance = runningBalance + jumlah;
+        operator = "+";
+      } else if (jenis === "Pengeluaran") {
+        expectedBalance = runningBalance - jumlah;
+        operator = "-";
+      } else if (jenis === "Initial") {
+        // Handle jika ada Initial di tengah-tengah (opsional, bisa dianggap reset)
+        expectedBalance = jumlah;
+        operator = "=";
+      } else {
+        expectedBalance = runningBalance;
+        operator = "?";
+      }
     }
 
-    const isValid = hasil === saldoSesudah;
+    // Validasi: Bandingkan hasil kalkulasi sistem dengan Saldo Sesudah di Sheet
+    const isValid = expectedBalance === saldoSesudahSheet;
     if (!isValid) hasError = true;
 
     const status = isValid ? "BENAR ✅" : "SALAH ❌";
 
+    // --- FORMAT OUTPUT ---
     content += `Transaksi ${index + 1}\n`;
-    content += `${formatCurrency(saldoSebelum, mataUang)} ${operator} ${formatCurrency(jumlah, mataUang)} = ${formatCurrency(hasil, mataUang)}\n`;
-    content += `Saldo Sheet: ${formatCurrency(saldoSesudah, mataUang)} -> ${status}\n\n`;
+
+    if (index === 0 && jenis === "Initial") {
+      content += `Initial: ${formatCurrency(jumlah, mataUang)}\n`;
+    } else {
+      content += `${formatCurrency(displayStartBalance, mataUang)} ${operator} ${formatCurrency(jumlah, mataUang)} = ${formatCurrency(expectedBalance, mataUang)}\n`;
+    }
+
+    content += `Saldo Sheet: ${formatCurrency(saldoSesudahSheet, mataUang)} -> ${status}\n\n`;
+
+    // Update runningBalance untuk iterasi berikutnya
+    runningBalance = expectedBalance;
   });
 
   content += hasError
@@ -142,16 +186,13 @@ export default {
         const fileName = `check_${target}.txt`;
 
         await ctx.replyWithDocument(
-          new InputFile(
-            Buffer.from(fileContent, "utf-8"),
-            fileName
-          )
+          new InputFile(Buffer.from(fileContent, "utf-8"), fileName),
         );
 
         await ctx.reply(
           result.hasError
             ? `❌ ${target} ada kesalahan`
-            : `✅ ${target} sudah benar`
+            : `✅ ${target} sudah benar`,
         );
 
         return;
@@ -183,14 +224,10 @@ export default {
       const fileName = `check_all.txt`;
 
       await ctx.replyWithDocument(
-        new InputFile(
-          Buffer.from(fileContent, "utf-8"),
-          fileName
-        )
+        new InputFile(Buffer.from(fileContent, "utf-8"), fileName),
       );
 
       await ctx.reply(summaryMessage);
-
     } catch (err) {
       console.error("Error di command check:", err);
       ctx.reply("Terjadi error saat validasi.");
