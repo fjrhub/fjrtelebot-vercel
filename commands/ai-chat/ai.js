@@ -3,6 +3,8 @@ dotenv.config({ path: ".env.local" });
 
 import { InputFile } from "grammy";
 import Groq from "groq-sdk";
+import { connectDB } from "../../db/db.js";
+import { AiHistory, AiMessage } from "../../db/aiModels.js";
 
 /* ================= CONFIG ================= */
 
@@ -24,9 +26,46 @@ const groq =
 
 global._groq = groq;
 
-/* ================= MEMORY ================= */
+/* ================= DB HELPERS ================= */
 
-global.aiHistory = global.aiHistory || {};
+async function getHistory(chatId) {
+  await connectDB();
+  const doc = await AiHistory.findOne({ chatId });
+  return doc ? doc.messages.map((m) => ({ role: m.role, content: m.content })) : [];
+}
+
+async function saveHistory(chatId, messages) {
+  await connectDB();
+  await AiHistory.findOneAndUpdate(
+    { chatId },
+    {
+      $set: {
+        messages: messages.slice(-MAX_HISTORY * 2),
+        updatedAt: new Date(),
+      },
+    },
+    { upsert: true, returnDocument: 'after' }
+  );
+}
+
+async function clearHistory(chatId) {
+  await connectDB();
+  await AiHistory.findOneAndUpdate(
+    { chatId },
+    { $set: { messages: [], updatedAt: new Date() } },
+    { upsert: true }
+  );
+}
+
+async function trackAiMessage(chatId, messageId) {
+  await connectDB();
+  try {
+    await AiMessage.create({ chatId, messageId });
+  } catch (err) {
+    // Duplicate key = sudah ada, abaikan
+    if (err.code !== 11000) console.error("trackAiMessage error:", err);
+  }
+}
 
 /* ================= SPLIT MESSAGE ================= */
 
@@ -50,28 +89,13 @@ function splitMessage(text, limit = SAFE_LIMIT) {
 
 /* ================= MARKDOWN V2 CONVERSION ================= */
 
-/**
- * Escape semua karakter spesial MarkdownV2 yang TIDAK dipakai untuk formatting.
- * Karakter yang perlu di-escape: _ * [ ] ( ) ~ ` > # + - = | { } . !
- */
 function escapeMarkdownV2(text) {
-  // Escape semua karakter special kecuali yang kita handle sendiri
   return text.replace(/([_*[\]()~`>#+=|{}.!\\-])/g, "\\$1");
 }
 
-/**
- * Convert markdown biasa dari AI response ke format MarkdownV2 Telegram.
- *
- * Urutan penting:
- * 1. Lindungi blok code (```) dan inline code (`) dari escaping
- * 2. Lindungi bold (**text**) dan italic (*text* / _text_)
- * 3. Escape sisa teks biasa
- */
 function convertToMarkdownV2(text) {
   const segments = [];
-  let remaining = text;
 
-  // Regex untuk menangkap semua elemen markdown secara berurutan
   const tokenRegex =
     /```[\s\S]*?```|`[^`]+`|\*\*(.+?)\*\*|__(.+?)__|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)|\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g;
 
@@ -79,51 +103,37 @@ function convertToMarkdownV2(text) {
   let match;
 
   while ((match = tokenRegex.exec(text)) !== null) {
-    // Escape plain text sebelum match ini
     if (match.index > lastIndex) {
-      const plain = text.slice(lastIndex, match.index);
-      segments.push(escapeMarkdownV2(plain));
+      segments.push(escapeMarkdownV2(text.slice(lastIndex, match.index)));
     }
 
     const full = match[0];
 
     if (full.startsWith("```")) {
-      // Code block - escape backtick content
-      const inner = full.slice(3, full.length - 3);
-      // Escape hanya karakter ` di dalam
-      const safeInner = inner.replace(/`/g, "\\`");
-      segments.push("```" + safeInner + "```");
+      const inner = full.slice(3, full.length - 3).replace(/`/g, "\\`");
+      segments.push("```" + inner + "```");
     } else if (full.startsWith("`")) {
-      // Inline code
-      const inner = full.slice(1, full.length - 1);
-      const safeInner = inner.replace(/`/g, "\\`");
-      segments.push("`" + safeInner + "`");
+      const inner = full.slice(1, full.length - 1).replace(/`/g, "\\`");
+      segments.push("`" + inner + "`");
     } else if (match[1] !== undefined) {
-      // **bold**
       segments.push("*" + escapeMarkdownV2(match[1]) + "*");
     } else if (match[2] !== undefined) {
-      // __bold__
       segments.push("*" + escapeMarkdownV2(match[2]) + "*");
     } else if (match[3] !== undefined) {
-      // *italic*
       segments.push("_" + escapeMarkdownV2(match[3]) + "_");
     } else if (match[4] !== undefined) {
-      // _italic_
       segments.push("_" + escapeMarkdownV2(match[4]) + "_");
     } else if (match[5] !== undefined && match[6] !== undefined) {
-      // [link text](url)
       const linkText = escapeMarkdownV2(match[5]);
       const url = match[6].replace(/[)]/g, "\\)");
       segments.push(`[${linkText}](${url})`);
     } else {
-      // Fallback: escape seluruh match
       segments.push(escapeMarkdownV2(full));
     }
 
     lastIndex = match.index + full.length;
   }
 
-  // Sisa teks setelah match terakhir
   if (lastIndex < text.length) {
     segments.push(escapeMarkdownV2(text.slice(lastIndex)));
   }
@@ -144,26 +154,26 @@ async function sendMarkdownMessage(ctx, text) {
       converted = null;
     }
 
-    // Coba kirim dengan MarkdownV2
     if (converted) {
       try {
-        await ctx.api.sendMessage(ctx.chat.id, converted, {
+        const sent = await ctx.api.sendMessage(ctx.chat.id, converted, {
           parse_mode: "MarkdownV2",
           disable_web_page_preview: true,
         });
+        await trackAiMessage(ctx.chat.id, sent.message_id);
         continue;
       } catch (err) {
         console.error("MarkdownV2 SEND ERROR:", err.message);
-        // Log converted text untuk debug
         console.error("Converted text:\n", converted);
       }
     }
 
-    // Fallback: kirim plain text tanpa formatting
+    // Fallback: plain text
     try {
-      await ctx.api.sendMessage(ctx.chat.id, chunk, {
+      const sent = await ctx.api.sendMessage(ctx.chat.id, chunk, {
         disable_web_page_preview: true,
       });
+      await trackAiMessage(ctx.chat.id, sent.message_id);
     } catch (err) {
       console.error("PLAIN SEND ERROR:", err.message);
     }
@@ -184,7 +194,6 @@ async function sendToGroq(messages) {
     let content =
       completion.choices?.[0]?.message?.content || "❌ No response received.";
 
-    // Hapus tag <think>...</think> dari model reasoning
     content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
     return content;
@@ -199,6 +208,7 @@ async function sendToGroq(messages) {
 }
 
 /* ========================= SYSTEM PROMPT ========================= */
+
 const SYSTEM_PROMPT = `Kamu adalah CahayaMalamBot, AI assistant yang friendly dan helpful.
 
 **Karakter:**
@@ -234,11 +244,136 @@ const SYSTEM_PROMPT = `Kamu adalah CahayaMalamBot, AI assistant yang friendly da
 - Timezone: Asia/Jakarta
 - Location: Mojokerto, Jawa Timur`;
 
+/* ================= CORE AI HANDLER ================= */
+
+async function handleAICore(ctx, inputText) {
+  const chatId = ctx.chat.id;
+
+  await ctx.replyWithChatAction("typing");
+
+  const history = await getHistory(chatId);
+
+  /* ================= REPLIED MESSAGE CONTEXT ================= */
+
+  const repliedMsg = ctx.message?.reply_to_message;
+  let repliedContext = "";
+
+  if (repliedMsg) {
+    const repliedText = repliedMsg.text || repliedMsg.caption || "";
+    const repliedFrom = repliedMsg.from?.first_name || "Unknown";
+    const isFromBot = repliedMsg.from?.is_bot ?? false;
+
+    if (repliedText) {
+      if (isFromBot) {
+        repliedContext = `[User sedang membahas pesan bot ini]\n"""\n${repliedText}\n"""`;
+      } else {
+        repliedContext = `[User sedang membahas pesan dari ${repliedFrom}]\n"""\n${repliedText}\n"""`;
+      }
+    }
+  }
+
+  const fullUserInput = repliedContext
+    ? `${repliedContext}\n\n${inputText}`
+    : inputText;
+
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT },
+    ...history,
+    { role: "user", content: fullUserInput },
+  ];
+
+  const reply = await sendToGroq(messages);
+
+  const updatedHistory = [
+    ...history,
+    { role: "user", content: fullUserInput },
+    { role: "assistant", content: reply },
+  ];
+
+  await saveHistory(chatId, updatedHistory);
+  await sendMarkdownMessage(ctx, reply);
+}
+
+/* ================= EXPORTED HELPER ================= */
+
+// Dipanggil dari handler.js untuk cek apakah message_id tertentu adalah pesan AI
+export async function isAiMessage(chatId, messageId) {
+  await connectDB();
+  const found = await AiMessage.exists({ chatId, messageId });
+  return !!found;
+}
+
 /* ================= COMMAND ================= */
 
 export default {
   name: "ai",
   description: "AI chat",
+
+  // Dipanggil saat user kirim dokumen — untuk handle /ai import
+  async handleDocument(ctx) {
+    const doc = ctx.message?.document;
+    if (!doc) return;
+
+    // Hanya proses kalau nama file cocok dengan pola export kita
+    const isAiExport =
+      doc.file_name?.startsWith("ai-history-") && doc.file_name?.endsWith(".json");
+
+    if (!isAiExport) return;
+
+    const chatId = ctx.chat.id;
+
+    try {
+      // Download file dari Telegram
+      const file = await ctx.api.getFile(doc.file_id);
+      const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+
+      const res = await fetch(fileUrl);
+      if (!res.ok) throw new Error("Gagal download file");
+
+      const raw = await res.text();
+      const parsed = JSON.parse(raw);
+
+      // Validasi struktur JSON
+      if (
+        !Array.isArray(parsed.messages) ||
+        parsed.messages.some((m) => !m.role || !m.content)
+      ) {
+        return ctx.reply("❌ Format file tidak valid. Pastikan file dari /ai export.");
+      }
+
+      const messages = parsed.messages.filter((m) =>
+        ["user", "assistant"].includes(m.role)
+      );
+
+      await saveHistory(chatId, messages);
+
+      return ctx.reply(
+        `✅ History berhasil di-import!
+
+• ${messages.length} pesan dimuat
+• Export dari: ${parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString("id-ID") : "unknown"}`
+      );
+    } catch (err) {
+      console.error("IMPORT ERROR:", err);
+      if (err instanceof SyntaxError) {
+        return ctx.reply("❌ File JSON tidak valid atau korup.");
+      }
+      return ctx.reply("❌ Gagal import history.");
+    }
+  },
+
+  // Dipanggil otomatis saat user reply pesan AI tanpa ketik /ai
+  async handleReply(ctx) {
+    const text = ctx.message?.text?.trim();
+    if (!text || text.startsWith("/")) return;
+
+    try {
+      await handleAICore(ctx, text);
+    } catch (err) {
+      console.error(err);
+      ctx.reply("❌ Terjadi error.");
+    }
+  },
 
   async execute(ctx) {
     const text = ctx.message?.text?.trim();
@@ -246,33 +381,54 @@ export default {
 
     const chatId = ctx.chat.id;
 
-    if (!global.aiHistory[chatId]) {
-      global.aiHistory[chatId] = [];
-    }
-
     /* ================= RESET ================= */
 
     if (text === "/ai reset") {
-      global.aiHistory[chatId] = [];
+      await clearHistory(chatId);
       return ctx.reply("✅ History dihapus.");
     }
 
-    /* ================= HISTORY ================= */
+    /* ================= EXPORT ================= */
 
-    if (text === "/ai history") {
-      const history = global.aiHistory[chatId];
+    if (text === "/ai export") {
+      const history = await getHistory(chatId);
 
       if (!history.length) {
-        return ctx.reply("History kosong.");
+        return ctx.reply("History kosong, belum ada yang bisa di-export.");
       }
 
-      const content = history
-        .map((msg) => `${msg.role}\n${msg.content}`)
-        .join("\n\n");
+      // Format JSON yang bisa langsung di-import ulang
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        chatId,
+        messageCount: history.length,
+        messages: history,
+      };
 
-      const buffer = Buffer.from(content);
+      const json = JSON.stringify(exportData, null, 2);
+      const buffer = Buffer.from(json, "utf-8");
+      const filename = `ai-history-${chatId}-${Date.now()}.json`;
 
-      return ctx.replyWithDocument(new InputFile(buffer, "ai-history.txt"));
+      return ctx.replyWithDocument(new InputFile(buffer, filename), {
+        caption: `📦 *Export History*\n\n• ${history.length} pesan\n• Kirim balik file ini dengan /ai import untuk restore`,
+        parse_mode: "Markdown",
+      });
+    }
+
+    /* ================= IMPORT ================= */
+
+    if (text === "/ai import") {
+      return ctx.reply(
+        "Kirim file JSON hasil export sebagai dokumen. Bot akan otomatis mendeteksi dan import history-nya."
+      );
+    }
+
+    /* ================= HISTORY (alias export) ================= */
+
+    if (text === "/ai history") {
+      // Redirect ke export supaya konsisten
+      ctx.message.text = "/ai export";
+      return this.execute(ctx);
     }
 
     /* ================= INPUT ================= */
@@ -284,54 +440,7 @@ export default {
     }
 
     try {
-      await ctx.replyWithChatAction("typing");
-
-      const history = global.aiHistory[chatId];
-
-      /* ================= REPLIED MESSAGE CONTEXT ================= */
-
-      // Cek apakah user sedang reply ke pesan lain
-      const repliedMsg = ctx.message?.reply_to_message;
-      let repliedContext = "";
-
-      if (repliedMsg) {
-        const repliedText = repliedMsg.text || repliedMsg.caption || "";
-        const repliedFrom = repliedMsg.from?.first_name || "Unknown";
-        const isFromBot = repliedMsg.from?.is_bot ?? false;
-
-        if (repliedText) {
-          if (isFromBot) {
-            // Reply ke pesan bot — jadikan sebagai konteks assistant
-            repliedContext = `[User sedang membahas pesan bot ini]\n"""\n${repliedText}\n"""`;
-          } else {
-            // Reply ke pesan user lain atau diri sendiri
-            repliedContext = `[User sedang membahas pesan dari ${repliedFrom}]\n"""\n${repliedText}\n"""`;
-          }
-        }
-      }
-
-      // Gabungkan konteks reply (jika ada) dengan pertanyaan user
-      const fullUserInput = repliedContext
-        ? `${repliedContext}\n\n${inputText}`
-        : inputText;
-
-      const messages = [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...history,
-        { role: "user", content: fullUserInput },
-      ];
-
-      let reply = await sendToGroq(messages);
-
-      // Simpan ke history — pakai fullUserInput supaya konteks reply ikut tersimpan
-      history.push({ role: "user", content: fullUserInput });
-      history.push({ role: "assistant", content: reply });
-
-      while (history.length > MAX_HISTORY * 2) {
-        history.shift();
-      }
-
-      await sendMarkdownMessage(ctx, reply);
+      await handleAICore(ctx, inputText);
     } catch (err) {
       console.error(err);
       ctx.reply("❌ Terjadi error.");
