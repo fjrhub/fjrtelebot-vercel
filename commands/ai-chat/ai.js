@@ -14,7 +14,7 @@ if (!process.env.GROQ_API_KEY) {
 
 const MODEL = "qwen/qwen3-32b";
 const MAX_HISTORY = 10;
-const SAFE_LIMIT = 3500;
+const SAFE_LIMIT = 4000;
 
 /* ================= GROQ CLIENT ================= */
 
@@ -188,13 +188,20 @@ async function sendToGroq(messages) {
       model: MODEL,
       messages,
       temperature: 0.9,
-      max_tokens: 2048,
+      max_tokens: 6000,
     });
 
     let content =
       completion.choices?.[0]?.message?.content || "❌ No response received.";
 
     content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+
+    // Strip heading markdown yang masih lolos dari instruksi prompt
+    content = content.replace(/^#{1,6}\s+\*\*(.+?)\s*\*\*\s*$/gm, "**$1**");
+    content = content.replace(/^#{1,6}\s+(.+)$/gm, "**$1**");
+
+    // Fix bold yang punya trailing spasi sebelum penutup: **text  ** → **text**
+    content = content.replace(/\*\*(.+?)\s+\*\*/g, "**$1**");
 
     return content;
   } catch (err) {
@@ -209,7 +216,15 @@ async function sendToGroq(messages) {
 
 /* ========================= SYSTEM PROMPT ========================= */
 
-const SYSTEM_PROMPT = `Kamu adalah CahayaMalamBot, AI assistant yang friendly dan helpful.
+function buildSystemPrompt(ctx) {
+  const from = ctx.from;
+  const user = from?.username
+    ? `@${from.username}`
+    : from?.first_name
+    ? from.first_name + (from.last_name ? ` ${from.last_name}` : "")
+    : "Unknown";
+
+  return `Kamu adalah CahayaMalamBot, AI assistant yang friendly dan helpful.
 
 **Karakter:**
 - Santai, friendly, kayak temen ngobrol
@@ -225,12 +240,13 @@ const SYSTEM_PROMPT = `Kamu adalah CahayaMalamBot, AI assistant yang friendly da
 - Gunakan triple backtick untuk code block
 - Paragraf pendek, mudah dibaca
 - Jangan gunakan tabel markdown
-- Jangan gunakan heading (# ## ###)
+- DILARANG KERAS gunakan heading markdown (# ## ### #### dst) dalam bentuk apapun, ganti dengan **bold** kalau butuh judul
 
 **PENTING - Telegram Limit:**
-- Maksimal 4096 karakter per pesan
-- Jika jawaban panjang, akan otomatis terbagi jadi beberapa pesan
-- Fokus ke jawaban lengkap dan jelas
+- Sistem otomatis memecah dan mengirim jawaban, TIDAK perlu kamu urus sama sekali
+- DILARANG KERAS: nulis "Bagian 1", "Bagian 2", "lanjut ke bagian berikutnya", "karakter: xxx", atau apapun yang nunjukin kamu sadar soal limit
+- DILARANG KERAS: tanya izin, minta konfirmasi, atau kasih preview sebelum jawab
+- Cukup tulis jawaban lengkap dari awal sampai akhir seperti biasa, seolah tidak ada limit
 
 **Rules:**
 - Jawab lengkap tapi jangan bertele-tele
@@ -240,9 +256,10 @@ const SYSTEM_PROMPT = `Kamu adalah CahayaMalamBot, AI assistant yang friendly da
 - Kalau butuh info, tanya
 
 **Context:**
-- User: FJR
+- User: ${user}
 - Timezone: Asia/Jakarta
 - Location: Mojokerto, Jawa Timur`;
+}
 
 /* ================= CORE AI HANDLER ================= */
 
@@ -277,7 +294,7 @@ async function handleAICore(ctx, inputText) {
     : inputText;
 
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: buildSystemPrompt(ctx) },
     ...history,
     { role: "user", content: fullUserInput },
   ];
