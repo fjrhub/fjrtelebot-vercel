@@ -288,15 +288,43 @@ export default {
 
       const history = global.aiHistory[chatId];
 
+      /* ================= REPLIED MESSAGE CONTEXT ================= */
+
+      // Cek apakah user sedang reply ke pesan lain
+      const repliedMsg = ctx.message?.reply_to_message;
+      let repliedContext = "";
+
+      if (repliedMsg) {
+        const repliedText = repliedMsg.text || repliedMsg.caption || "";
+        const repliedFrom = repliedMsg.from?.first_name || "Unknown";
+        const isFromBot = repliedMsg.from?.is_bot ?? false;
+
+        if (repliedText) {
+          if (isFromBot) {
+            // Reply ke pesan bot — jadikan sebagai konteks assistant
+            repliedContext = `[User sedang membahas pesan bot ini]\n"""\n${repliedText}\n"""`;
+          } else {
+            // Reply ke pesan user lain atau diri sendiri
+            repliedContext = `[User sedang membahas pesan dari ${repliedFrom}]\n"""\n${repliedText}\n"""`;
+          }
+        }
+      }
+
+      // Gabungkan konteks reply (jika ada) dengan pertanyaan user
+      const fullUserInput = repliedContext
+        ? `${repliedContext}\n\n${inputText}`
+        : inputText;
+
       const messages = [
         { role: "system", content: SYSTEM_PROMPT },
         ...history,
-        { role: "user", content: inputText },
+        { role: "user", content: fullUserInput },
       ];
 
       let reply = await sendToGroq(messages);
 
-      history.push({ role: "user", content: inputText });
+      // Simpan ke history — pakai fullUserInput supaya konteks reply ikut tersimpan
+      history.push({ role: "user", content: fullUserInput });
       history.push({ role: "assistant", content: reply });
 
       while (history.length > MAX_HISTORY * 2) {
