@@ -1,8 +1,7 @@
 // file: /pages/api/webhook/[secret].js
-import { webhookCallback } from "grammy";
 import { Bot } from "grammy";
 import { handleMessage, handleCallback, handleDocument } from "../../../lib/handler.js";
-import { connectDB } from "../../../lib/db/db.js";
+import { connectDB } from "../../../db/db.js";
 
 export const config = {
   api: { bodyParser: true },
