@@ -1,4 +1,5 @@
 // file: /pages/api/webhook/[secret].js
+import { webhookCallback } from "grammy";
 import { Bot } from "grammy";
 import { handleMessage, handleCallback, handleDocument } from "../../../lib/handler.js";
 import { connectDB } from "../../../db/db.js";
