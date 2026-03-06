@@ -4,7 +4,7 @@ dotenv.config({ path: ".env.local" });
 import { InputFile } from "grammy";
 import Groq from "groq-sdk";
 import { connectDB } from "../../db/db.js";
-import { AiHistory, AiMessage } from "../../db/aiModels.js";
+import { AiHistory, AiMessage, AiLock } from "../../db/aiModels.js";
 
 /* ================= CONFIG ================= */
 
@@ -65,6 +65,27 @@ async function trackAiMessage(chatId, messageId) {
     // Duplicate key = sudah ada, abaikan
     if (err.code !== 11000) console.error("trackAiMessage error:", err);
   }
+}
+
+/* ================= PROCESSING LOCK ================= */
+
+// Coba ambil lock untuk chatId — return true kalau berhasil, false kalau sudah ada
+async function acquireLock(chatId) {
+  await connectDB();
+  try {
+    await AiLock.create({ chatId });
+    return true;
+  } catch (err) {
+    // Duplicate key = chatId sedang diproses, tolak request baru
+    if (err.code === 11000) return false;
+    throw err;
+  }
+}
+
+// Lepas lock setelah selesai/error
+async function releaseLock(chatId) {
+  await connectDB();
+  await AiLock.deleteOne({ chatId });
 }
 
 /* ================= SPLIT MESSAGE ================= */
@@ -266,49 +287,61 @@ function buildSystemPrompt(ctx) {
 async function handleAICore(ctx, inputText) {
   const chatId = ctx.chat.id;
 
-  await ctx.replyWithChatAction("typing");
-
-  const history = await getHistory(chatId);
-
-  /* ================= REPLIED MESSAGE CONTEXT ================= */
-
-  const repliedMsg = ctx.message?.reply_to_message;
-  let repliedContext = "";
-
-  if (repliedMsg) {
-    const repliedText = repliedMsg.text || repliedMsg.caption || "";
-    const repliedFrom = repliedMsg.from?.first_name || "Unknown";
-    const isFromBot = repliedMsg.from?.is_bot ?? false;
-
-    if (repliedText) {
-      if (isFromBot) {
-        repliedContext = `[User sedang membahas pesan bot ini]\n"""\n${repliedText}\n"""`;
-      } else {
-        repliedContext = `[User sedang membahas pesan dari ${repliedFrom}]\n"""\n${repliedText}\n"""`;
-      }
-    }
+  // Cek apakah chatId sedang diproses
+  const locked = await acquireLock(chatId);
+  if (!locked) {
+    await ctx.reply("⏳ Lagi proses pesanmu sebelumnya, tunggu sebentar ya.");
+    return;
   }
 
-  const fullUserInput = repliedContext
-    ? `${repliedContext}\n\n${inputText}`
-    : inputText;
+  try {
+    await ctx.replyWithChatAction("typing");
 
-  const messages = [
-    { role: "system", content: buildSystemPrompt(ctx) },
-    ...history,
-    { role: "user", content: fullUserInput },
-  ];
+    const history = await getHistory(chatId);
 
-  const reply = await sendToGroq(messages);
+    /* ================= REPLIED MESSAGE CONTEXT ================= */
 
-  const updatedHistory = [
-    ...history,
-    { role: "user", content: fullUserInput },
-    { role: "assistant", content: reply },
-  ];
+    const repliedMsg = ctx.message?.reply_to_message;
+    let repliedContext = "";
 
-  await saveHistory(chatId, updatedHistory);
-  await sendMarkdownMessage(ctx, reply);
+    if (repliedMsg) {
+      const repliedText = repliedMsg.text || repliedMsg.caption || "";
+      const repliedFrom = repliedMsg.from?.first_name || "Unknown";
+      const isFromBot = repliedMsg.from?.is_bot ?? false;
+
+      if (repliedText) {
+        if (isFromBot) {
+          repliedContext = `[User sedang membahas pesan bot ini]\n"""\n${repliedText}\n"""`;
+        } else {
+          repliedContext = `[User sedang membahas pesan dari ${repliedFrom}]\n"""\n${repliedText}\n"""`;
+        }
+      }
+    }
+
+    const fullUserInput = repliedContext
+      ? `${repliedContext}\n\n${inputText}`
+      : inputText;
+
+    const messages = [
+      { role: "system", content: buildSystemPrompt(ctx) },
+      ...history,
+      { role: "user", content: fullUserInput },
+    ];
+
+    const reply = await sendToGroq(messages);
+
+    const updatedHistory = [
+      ...history,
+      { role: "user", content: fullUserInput },
+      { role: "assistant", content: reply },
+    ];
+
+    await saveHistory(chatId, updatedHistory);
+    await sendMarkdownMessage(ctx, reply);
+  } finally {
+    // Selalu lepas lock, bahkan kalau error
+    await releaseLock(chatId);
+  }
 }
 
 /* ================= EXPORTED HELPER ================= */

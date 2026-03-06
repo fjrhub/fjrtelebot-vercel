@@ -64,6 +64,28 @@ const aiMessageSchema = new Schema(
 
 aiMessageSchema.index({ chatId: 1, messageId: 1 }, { unique: true });
 
+/* ================= AI PROCESSING LOCK ================= */
+// Distributed lock per chatId — mencegah spam request diproses paralel.
+// Dokumen dibuat saat mulai proses, dihapus saat selesai/gagal.
+// TTL 60 detik sebagai safety net kalau bot crash di tengah proses.
+
+const aiLockSchema = new Schema(
+  {
+    chatId: {
+      type: Number,
+      required: true,
+      unique: true,
+      index: true,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+      expires: 60, // auto-release lock setelah 60 detik kalau bot crash
+    },
+  },
+  { timestamps: false }
+);
+
 /* ================= EXPORT ================= */
 // Pakai pola ini agar tidak error "Cannot overwrite model once compiled"
 // yang sering terjadi di ESM / hot-reload
@@ -74,4 +96,7 @@ const AiHistory =
 const AiMessage =
   mongoose.models["AiMessage"] ?? model("AiMessage", aiMessageSchema);
 
-export { AiHistory, AiMessage };
+const AiLock =
+  mongoose.models["AiLock"] ?? model("AiLock", aiLockSchema);
+
+export { AiHistory, AiMessage, AiLock };
