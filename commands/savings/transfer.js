@@ -114,6 +114,10 @@ export default {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
     const rows = await fetchAllRows();
+    
+    // Parse arg: /transfer admin → withAdmin = true
+    const args = (ctx.message?.text || "").split(/\s+/).slice(1);
+    const withAdmin = args.includes("admin");
 
     const msg = await ctx.reply(
       "🔁 Transfer Antar Akun\n\nPilih akun asal:",
@@ -128,6 +132,7 @@ export default {
       rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
+      withAdmin,
     });
   },
 
@@ -227,8 +232,7 @@ export default {
 Deskripsi: ${state.deskripsi}
 
 Jumlah Kirim: ${asal.mataUang}${format(state.jumlahKirim)}
-Jumlah Diterima: ${asal.mataUang}${format(state.jumlahTerima)}
-Biaya Admin (Auto): ${asal.mataUang}${format(state.admin)}
+Jumlah Diterima: ${asal.mataUang}${format(state.jumlahTerima)}${state.withAdmin ? `\nBiaya Admin (Auto): ${asal.mataUang}${format(state.admin)}` : ""}
 
 Dari: ${state.akunAsal}
 Saldo: ${format(asal.saldo)} → ${format(asal.saldo - state.jumlahKirim)}
@@ -257,7 +261,15 @@ Catatan: ${state.catatan}
 
     } else if (state.step === "jumlahKirim") {
       state.jumlahKirim = toNumber(ctx.message.text);
-      state.step = "jumlahTerima";
+      
+      // Skip jumlahTerima jika bukan mode admin
+      if (!state.withAdmin) {
+        state.jumlahTerima = state.jumlahKirim;
+        state.admin = 0;
+        state.step = "tag";
+      } else {
+        state.step = "jumlahTerima";
+      }
 
     } else if (state.step === "jumlahTerima") {
       state.jumlahTerima = toNumber(ctx.message.text);
@@ -329,8 +341,7 @@ Catatan: ${state.catatan}
 Deskripsi: ${state.deskripsi}
 
 Jumlah Kirim: ${asal.mataUang}${format(state.jumlahKirim)}
-Jumlah Diterima: ${asal.mataUang}${format(state.jumlahTerima)}
-Biaya Admin (Auto): ${asal.mataUang}${format(state.admin)}
+Jumlah Diterima: ${asal.mataUang}${format(state.jumlahTerima)}${state.withAdmin ? `\nBiaya Admin (Auto): ${asal.mataUang}${format(state.admin)}` : ""}
 
 Dari: ${state.akunAsal}
 Saldo: ${format(asal.saldo)} → ${format(asal.saldo - state.jumlahKirim)}

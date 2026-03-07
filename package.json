@@ -1,6 +1,6 @@
 {
   "name": "fjrtelebot-vercel",
-  "version": "1.25.17",
+  "version": "1.26.17",
   "private": true,
   "scripts": {
     "dev": "next dev",
