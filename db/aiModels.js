@@ -86,9 +86,29 @@ const aiLockSchema = new Schema(
   { timestamps: false }
 );
 
+/* ================= GENERIC PROCESSING LOCK ================= */
+// Lock generic yang bisa dipakai semua command, bukan hanya AI.
+// Key format: "scope:userId" — contoh: "auto:123456", "ai:123456"
+// TTL 30 detik sebagai safety net.
+
+const processingLockSchema = new Schema(
+  {
+    key: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+      expires: 30,
+    },
+  },
+  { timestamps: false }
+);
+
 /* ================= EXPORT ================= */
-// Pakai pola ini agar tidak error "Cannot overwrite model once compiled"
-// yang sering terjadi di ESM / hot-reload
 
 const AiHistory =
   mongoose.models["AiHistory"] ?? model("AiHistory", aiHistorySchema);
@@ -99,4 +119,7 @@ const AiMessage =
 const AiLock =
   mongoose.models["AiLock"] ?? model("AiLock", aiLockSchema);
 
-export { AiHistory, AiMessage, AiLock };
+const ProcessingLock =
+  mongoose.models["ProcessingLock"] ?? model("ProcessingLock", processingLockSchema);
+
+export { AiHistory, AiMessage, AiLock, ProcessingLock };
