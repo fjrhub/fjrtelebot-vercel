@@ -8,10 +8,7 @@ export const config = {
   api: { bodyParser: true },
 };
 
-// === SINGLETON BOT PER INSTANCE ===
-// Di Vercel, global masih bisa dipakai dalam satu instance yang sama
-// tapi jangan andalkan untuk state antar request
-if (!global._bot) {
+if (!global._botReady) {
   const token = process.env.BOT_TOKEN;
   if (!token) throw new Error("Missing BOT_TOKEN");
 
@@ -21,10 +18,9 @@ if (!global._bot) {
   bot.on("message", handleMessage);
   bot.on("callback_query", handleCallback);
 
-  global._bot = bot;
+  // Simpan promise init, bukan bot mentah
+  global._botReady = bot.init().then(() => bot);
 }
-
-const bot = global._bot;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -32,16 +28,17 @@ export default async function handler(req, res) {
     return res.status(405).send("Method Not Allowed");
   }
 
-  // Validasi secret
   const { secret } = req.query;
   const expected = process.env.TELEGRAM_SECRET;
   if (!expected) return res.status(500).send("Server misconfiguration");
   if (secret !== expected) return res.status(401).send("Unauthorized");
 
   try {
-    // Pastikan DB connect sebelum proses update
-    await connectDB();
-    await bot.init();
+    const [bot] = await Promise.all([
+      global._botReady,
+      connectDB(),
+    ]);
+
     await bot.handleUpdate(req.body);
     return res.status(200).send("OK");
   } catch (err) {
