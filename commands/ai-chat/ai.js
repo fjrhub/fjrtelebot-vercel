@@ -12,7 +12,6 @@ if (!process.env.GROQ_API_KEY) {
   throw new Error("Missing GROQ_API_KEY");
 }
 
-
 const MODEL = "qwen/qwen3-32b";
 const MAX_HISTORY = 10;
 const SAFE_LIMIT = 4000;
