@@ -331,18 +331,22 @@ export default {
       };
 
       const igHandler2 = async (ctx, chatId, data) => {
-        // 🔹 Initial data validation
+        // Validasi eksplisit: jika result null/undefined, langsung throw
         if (!data || typeof data !== "object") {
+          throw new Error("Invalid IG API 2 format: Root data missing.");
+        }
+
+        // Jika data masih membungkus result (dan result-nya null), throw agar fallback
+        if (data.result === null || (data.result === undefined && !data.url)) {
           throw new Error(
-            "Invalid IG API 2 format: Root data missing or invalid.",
+            "Invalid IG API 2 format: result is null or missing.",
           );
         }
 
-        // 🔹 Detect data structure (sometimes using 'result', sometimes directly object)
+        // Normalisasi struktur data
         const result =
           data.result && typeof data.result === "object" ? data.result : data;
 
-        // 🔹 Fetch all media URLs
         const mediaUrls = Array.isArray(result.url)
           ? result.url.filter(Boolean)
           : typeof result.url === "string"
@@ -353,15 +357,11 @@ export default {
           throw new Error("API 2 returned empty or invalid URLs.");
         }
 
-        // 🔹 Fetch metadata (optional)
         const isVideo = Boolean(result.isVideo);
         const likes = result.like || 0;
         const comments = result.comment || 0;
-
-        // 🔹 Create a simple caption (emoji ❤️ 💬)
         const caption = `${likes > 0 ? `❤️ ${toNumberFormat(likes)}` : ""}${comments > 0 ? `   💬 ${toNumberFormat(comments)}` : ""}\n\n🔗 Source: Archive\n📱 Platform: ${platform}\n👤 Request by: ${mention}`;
 
-        // 🔹
         if (isVideo) {
           await ctx.api.sendVideo(chatId, mediaUrls[0], {
             caption,
@@ -371,18 +371,18 @@ export default {
           return;
         }
 
-        const groups = chunkArray(mediaUrls, 10); // send per 10 to avoid timeout
+        const groups = chunkArray(mediaUrls, 10);
         for (const grp of groups) {
           const mediaGroup = grp.map((url, idx) => ({
             type: "photo",
             media: url,
             ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
           }));
-
           await ctx.api.sendMediaGroup(chatId, mediaGroup);
-          if (groups.length > 1) await delay(500); // delay between batches
+          if (groups.length > 1) await delay(500);
         }
-        throw new Error("API 2 returned no valid downloadable content.");
+
+        return; // ✅ Jangan throw error di sini jika sudah sukses kirim
       };
 
       const igHandler3 = async (ctx, chatId, data) => {
@@ -531,7 +531,7 @@ export default {
 
       await Promise.all(
         validApis.map(async (api, i) => {
-          if (sent) return; // if someone has already succeeded, skip it
+          if (sent) return; // jika sudah ada yang sukses, skip
 
           const controller = controllers[i];
           const start = Date.now();
@@ -542,24 +542,39 @@ export default {
               timeout: 8000,
             });
 
-            // If there is another API that is successful, immediately stop execution.
-            if (sent) return;
+            if (sent) return; // double-check setelah await
 
             const duration = ((Date.now() - start) / 1000).toFixed(2);
             console.log(`✅ ${api.label} fetched in ${duration}s`);
 
+            // Ekstrak data dengan fallback yang lebih aman
+            const rawData = res.data;
             const data =
-              res.result || res.data?.result || res.data?.data || res.data;
-            if (!data) throw new Error("Empty data");
+              rawData?.result !== undefined
+                ? rawData.result
+                : rawData?.data?.result !== undefined
+                  ? rawData.data.result
+                  : rawData?.data || rawData;
 
+            // Validasi awal: jika data null/undefined, langsung throw agar fallback
+            if (
+              !data ||
+              (data && typeof data === "object" && data.result === null)
+            ) {
+              throw new Error("Invalid or empty data structure");
+            }
+
+            // ✅ FIX: Set sent = true DAN abort controller HANYA setelah handler sukses
+            await api.handler(ctx, chatId, data);
+
+            // Jika handler tidak throw error, berarti sukses → klaim "sent"
             if (!sent) {
               sent = true;
-              controllers.forEach((c) => c.abort()); // stop other APIs
+              controllers.forEach((c) => c.abort());
               console.log(`🚀 Use: ${api.label} (${duration}s)`);
-              await api.handler(ctx, chatId, data);
             }
           } catch (err) {
-            // stop log error if there is a success
+            // Jika sudah ada yang sukses, jangan log error dari API lain
             if (sent) return;
 
             const duration = ((Date.now() - start) / 1000).toFixed(2);
