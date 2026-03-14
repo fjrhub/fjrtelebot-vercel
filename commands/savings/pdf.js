@@ -26,13 +26,13 @@ const FONT_SIZE = {
 
 /* =============================================================
    FOOTER LAYOUT — QR kiri, teks kanan
-   QR  : 40pt × 40pt
+   QR  : 60pt × 60pt  ← diperbesar
    Gap : 4pt
-   Teks: CONTENT_W - 40 - 4 = 92pt
+   Teks: CONTENT_W - 60 - 4 = 72pt
    ============================================================= */
-const QR_SIZE    = 40;
+const QR_SIZE    = 60;
 const QR_GAP     = 4;
-const FOOTER_TXT = CONTENT_W - QR_SIZE - QR_GAP;  // 92 pt
+const FOOTER_TXT = CONTENT_W - QR_SIZE - QR_GAP;  // 72 pt
 
 /* =============================================================
    CHAR WIDTH — Courier monospace ~0.6
@@ -212,19 +212,21 @@ function renderBlock(doc, block, qrImageBuffer = null) {
     const footerFs = FONT_SIZE.footer;
 
     doc.font("Courier-Bold").fontSize(footerFs);
-    const textCols = Math.floor(FOOTER_TXT / charWidth(footerFs));
+
+    // Hitung kolom teks berdasarkan lebar sisa (FOOTER_TXT = 72pt)
+    const textCols  = Math.floor(FOOTER_TXT / charWidth(footerFs));
     const footerMsg = "Simpan token ini untuk mengisi meteran listrik Anda";
     const msgLines  = wrapWords(footerMsg, textCols);
     const lineH     = footerFs * 1.2;
 
-    const msgH  = msgLines.length * lineH;
-    const tkH   = lineH;
-    const gapH  = lineH * 0.6;
-    const textH = msgH + gapH + tkH;
+    const msgH = msgLines.length * lineH;
 
-    const footerH = Math.max(QR_SIZE, textH);
+    // "Simpan..." vertikal center murni terhadap QR_SIZE saja
+    // offset = (QR_SIZE - msgH) / 2  → teks tepat di tengah QR
+    const msgOffsetY = (QR_SIZE - msgH) / 2;
+    let curY = startY + Math.max(0, msgOffsetY);
 
-    // Render QR
+    // Render QR — ukuran 60×60
     if (qrImageBuffer) {
       doc.image(qrImageBuffer, qrX, startY, {
         width : QR_SIZE,
@@ -232,27 +234,23 @@ function renderBlock(doc, block, qrImageBuffer = null) {
       });
     }
 
-    // Teks "Simpan..." di kanan
-    const textOffsetY = (footerH - textH) / 2;
-    let curY = startY + Math.max(0, textOffsetY);
-
+    // Teks "Simpan..." di kanan, center terhadap QR
     for (const ln of msgLines) {
       doc.font("Courier-Bold").fontSize(footerFs)
         .text(ln, textX, curY, { width: FOOTER_TXT, align: "left", lineGap: 0 });
       curY += lineH;
     }
 
-    curY += gapH;
-
-    // "Terima Kasih" tengah penuh
+    // "Terima Kasih" di bawah QR, center penuh
+    const afterQrY = startY + QR_SIZE + 4;
     doc.font("Courier-Bold").fontSize(footerFs)
-      .text("Terima Kasih", MARGIN, curY, {
+      .text("Terima Kasih", MARGIN, afterQrY, {
         width : CONTENT_W,
         align : "center",
         lineGap: 0,
       });
 
-    doc.y = startY + footerH + 4;
+    doc.y = afterQrY + lineH + 2;
   }
 }
 
@@ -269,7 +267,7 @@ async function measureHeight(blocks, qrBuf) {
   const contentH = doc.y - startY;
 
   doc.end();
-  return MARGIN + contentH + MARGIN + 6;
+  return MARGIN + contentH + MARGIN + 20;
 }
 
 /* =============================================================
@@ -291,9 +289,9 @@ async function createStruk(data) {
 
   const qrBuf = await QRCode.toBuffer(qrContent, {
     type                : "png",
-    width               : QR_SIZE * 3,
+    width               : QR_SIZE * 3,   // 180px — cukup tajam untuk 60pt
     margin              : 1,
-    errorCorrectionLevel: "L",  // L = data paling sedikit → QR paling mudah discan
+    errorCorrectionLevel: "L",
   });
 
   const height = await measureHeight(blocks, qrBuf);

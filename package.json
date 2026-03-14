@@ -1,6 +1,6 @@
 {
   "name": "fjrtelebot-vercel",
-  "version": "1.29.24",
+  "version": "1.30.25",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -16,7 +16,8 @@
     "grammy": "^1.40.1",
     "groq-sdk": "^0.37.0",
     "mongoose": "^9.2.4",
-    "pdfkit": "^0.17.2"
+    "pdfkit": "^0.17.2",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "next": "16.0.7",
