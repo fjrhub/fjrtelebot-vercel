@@ -22,6 +22,18 @@ function sheetsClient() {
 ========================= */
 const formatRp = (n) => "Rp" + Math.round(n).toLocaleString("id-ID");
 
+function parseRp(value) {
+  if (!value) return 0;
+
+  const cleaned = String(value)
+    .replace(/[^0-9,-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+
+  const num = Number(cleaned);
+  return isNaN(num) ? 0 : num;
+}
+
 function getJakartaTime() {
   const now = new Date(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }),
@@ -39,12 +51,23 @@ function getJakartaTime() {
 /* =========================
    DATA
 ========================= */
-async function getAllAccounts() {
+async function getAccountsNormal() {
   const sheets = sheetsClient();
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: "Sheet2!A2:B",
+  });
+
+  return res.data.values || [];
+}
+
+async function getAccountsFormatted() {
+  const sheets = sheetsClient();
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: "Sheet2!E2:F",
   });
 
   return res.data.values || [];
@@ -58,7 +81,13 @@ export default {
 
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
-    const rows = await getAllAccounts();
+
+    const text = ctx.message?.text || "";
+    const isAll = text.includes("-a");
+
+    const rows = isAll
+      ? await getAccountsFormatted()
+      : await getAccountsNormal();
 
     if (!rows.length) {
       return ctx.reply("Tidak ada data akun.");
@@ -67,12 +96,17 @@ export default {
     let totalRp = 0;
 
     const accountMessages = rows.map(([akun, rawSaldo]) => {
-      let saldo = Number(rawSaldo);
+      let saldo;
 
-      // #N/A, kosong, invalid → 0
-      if (!rawSaldo || isNaN(saldo)) saldo = 0;
+      if (isAll) {
+        saldo = parseRp(rawSaldo);
+      } else {
+        saldo = Number(rawSaldo);
+        if (!rawSaldo || isNaN(saldo)) saldo = 0;
+      }
 
       totalRp += saldo;
+
       return `🧾 Account : ${akun}\n💰 Balance: ${formatRp(saldo)}`;
     });
 
