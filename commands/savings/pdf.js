@@ -3,17 +3,10 @@ import QRCode      from "qrcode";
 import { PassThrough } from "stream";
 import { InputFile } from "grammy";
 
-/* =============================================================
-   RPP02N THERMAL PRINTER SPECS
-   - Paper width : 58mm  → 164 pt
-   - Margin      : 5mm   →  14 pt each side
-   - Content     : 48mm  → 136 pt
-   ============================================================= */
-
 const MM_TO_PT   = 72 / 25.4;
-const PAGE_WIDTH = Math.round(58 * MM_TO_PT);  // 164 pt
-const MARGIN     = Math.round(5  * MM_TO_PT);  //  14 pt
-const CONTENT_W  = PAGE_WIDTH - MARGIN * 2;    // 136 pt
+const PAGE_WIDTH = Math.round(58 * MM_TO_PT);
+const MARGIN     = Math.round(5  * MM_TO_PT);
+const CONTENT_W  = PAGE_WIDTH - MARGIN * 2;
 
 const FONT_SIZE = {
   title  : 14,
@@ -24,19 +17,9 @@ const FONT_SIZE = {
   footer :  9,
 };
 
-/* =============================================================
-   FOOTER LAYOUT — QR kiri, teks kanan
-   QR  : 60pt × 60pt  ← diperbesar
-   Gap : 4pt
-   Teks: CONTENT_W - 60 - 4 = 72pt
-   ============================================================= */
 const QR_SIZE    = 60;
 const QR_GAP     = 4;
-const FOOTER_TXT = CONTENT_W - QR_SIZE - QR_GAP;  // 72 pt
-
-/* =============================================================
-   CHAR WIDTH — Courier monospace ~0.6
-   ============================================================= */
+const FOOTER_TXT = CONTENT_W - QR_SIZE - QR_GAP;
 
 const CHAR_RATIO = 0.6;
 
@@ -44,10 +27,6 @@ function charWidth(fontSize) { return fontSize * CHAR_RATIO; }
 function charsPerLine(fontSize, widthPt = CONTENT_W) {
   return Math.floor(widthPt / charWidth(fontSize));
 }
-
-/* =============================================================
-   BLOCK TYPES
-   ============================================================= */
 
 function blockFull(text, size, align = "center", lineGap = 2) {
   return { type: "full", text, size, align, lineGap };
@@ -66,10 +45,6 @@ function blockFooter(qrData) {
   return { type: "footer", qrData };
 }
 
-/* =============================================================
-   TOKEN FORMATTER
-   ============================================================= */
-
 function formatToken(raw) {
   const digits  = raw.replace(/\D/g, "");
   const chunks  = digits.match(/.{1,4}/g) ?? [];
@@ -81,10 +56,6 @@ function formatToken(raw) {
   }
   return lines;
 }
-
-/* =============================================================
-   WORD WRAP
-   ============================================================= */
 
 function wrapWords(str, maxCols) {
   const words  = str.split(" ");
@@ -105,30 +76,16 @@ function wrapWords(str, maxCols) {
   return result;
 }
 
-/* =============================================================
-   QR CONTENT
-   Sesimpel mungkin — hanya data penting, format key:value
-   tanpa dekorasi, biar QR kecil dan mudah discan
-   ============================================================= */
-
+// ✅ QR hanya berisi Token dan Nomor Pelanggan
 function buildQrContent(data) {
   const digits = data.token.replace(/\D/g, "");
   const token  = (digits.match(/.{1,4}/g) ?? []).join(" ");
 
   return [
-    `TOKEN LISTRIK PLN`,
     `TOKEN: ${token}`,
-    `No Pesanan: ${data.orderId}`,
-    `Produk: ${data.product}`,
     `No Pelanggan: ${data.customerId}`,
-    `Nama: ${data.name}`,
-    `Tanggal: ${data.date}`,
   ].join("\n");
 }
-
-/* =============================================================
-   BUILD LAYOUT
-   ============================================================= */
 
 function buildBlocks(data) {
   const tokenBlocks = formatToken(data.token).map((t) =>
@@ -153,14 +110,9 @@ function buildBlocks(data) {
   ];
 }
 
-/* =============================================================
-   RENDERER
-   ============================================================= */
-
 function renderBlock(doc, block, qrImageBuffer = null) {
   const { size, lineGap } = block;
 
-  // ── FULL ─────────────────────────────────────────────────────
   if (block.type === "full") {
     doc.font("Courier-Bold").fontSize(size);
     doc.text(block.text, MARGIN, doc.y, {
@@ -171,7 +123,6 @@ function renderBlock(doc, block, qrImageBuffer = null) {
     return;
   }
 
-  // ── ROW ──────────────────────────────────────────────────────
   if (block.type === "row") {
     doc.font("Courier-Bold").fontSize(size);
     const cw        = charWidth(size);
@@ -181,8 +132,8 @@ function renderBlock(doc, block, qrImageBuffer = null) {
     const labelCols = 12;
     const valueCols = totalCols - labelCols - sepLen;
 
-    const labelStr  = block.label.padEnd(labelCols).slice(0, labelCols);
-    const value     = String(block.value);
+    const labelStr   = block.label.padEnd(labelCols).slice(0, labelCols);
+    const value      = String(block.value);
     const valueLines = wrapWords(value, valueCols);
 
     const line1 = labelStr + sep + valueLines[0].padStart(valueCols);
@@ -204,7 +155,6 @@ function renderBlock(doc, block, qrImageBuffer = null) {
     return;
   }
 
-  // ── FOOTER (QR kiri + teks kanan) ────────────────────────────
   if (block.type === "footer") {
     const startY   = doc.y;
     const qrX      = MARGIN;
@@ -213,20 +163,15 @@ function renderBlock(doc, block, qrImageBuffer = null) {
 
     doc.font("Courier-Bold").fontSize(footerFs);
 
-    // Hitung kolom teks berdasarkan lebar sisa (FOOTER_TXT = 72pt)
     const textCols  = Math.floor(FOOTER_TXT / charWidth(footerFs));
     const footerMsg = "Simpan token ini untuk mengisi meteran listrik Anda";
     const msgLines  = wrapWords(footerMsg, textCols);
     const lineH     = footerFs * 1.2;
 
-    const msgH = msgLines.length * lineH;
-
-    // "Simpan..." vertikal center murni terhadap QR_SIZE saja
-    // offset = (QR_SIZE - msgH) / 2  → teks tepat di tengah QR
+    const msgH       = msgLines.length * lineH;
     const msgOffsetY = (QR_SIZE - msgH) / 2;
     let curY = startY + Math.max(0, msgOffsetY);
 
-    // Render QR — ukuran 60×60
     if (qrImageBuffer) {
       doc.image(qrImageBuffer, qrX, startY, {
         width : QR_SIZE,
@@ -234,14 +179,12 @@ function renderBlock(doc, block, qrImageBuffer = null) {
       });
     }
 
-    // Teks "Simpan..." di kanan, center terhadap QR
     for (const ln of msgLines) {
       doc.font("Courier-Bold").fontSize(footerFs)
         .text(ln, textX, curY, { width: FOOTER_TXT, align: "left", lineGap: 0 });
       curY += lineH;
     }
 
-    // "Terima Kasih" di bawah QR, center penuh
     const afterQrY = startY + QR_SIZE + 4;
     doc.font("Courier-Bold").fontSize(footerFs)
       .text("Terima Kasih", MARGIN, afterQrY, {
@@ -253,10 +196,6 @@ function renderBlock(doc, block, qrImageBuffer = null) {
     doc.y = afterQrY + lineH + 2;
   }
 }
-
-/* =============================================================
-   HEIGHT MEASUREMENT
-   ============================================================= */
 
 async function measureHeight(blocks, qrBuf) {
   const doc = new PDFDocument({ size: [PAGE_WIDTH, 9999], margin: MARGIN });
@@ -270,26 +209,13 @@ async function measureHeight(blocks, qrBuf) {
   return MARGIN + contentH + MARGIN + 20;
 }
 
-/* =============================================================
-   PDF GENERATOR
-   ============================================================= */
-
-/**
- * @typedef {object} StrukData
- * @property {string} token
- * @property {string} orderId
- * @property {string} product
- * @property {string} customerId
- * @property {string} name
- * @property {string} date
- */
 async function createStruk(data) {
-  const blocks     = buildBlocks(data);
-  const qrContent  = buildQrContent(data);
+  const blocks    = buildBlocks(data);
+  const qrContent = buildQrContent(data);
 
   const qrBuf = await QRCode.toBuffer(qrContent, {
     type                : "png",
-    width               : QR_SIZE * 3,   // 180px — cukup tajam untuk 60pt
+    width               : QR_SIZE * 3,
     margin              : 1,
     errorCorrectionLevel: "L",
   });
@@ -305,10 +231,6 @@ async function createStruk(data) {
   doc.end();
   return stream;
 }
-
-/* =============================================================
-   PARSER
-   ============================================================= */
 
 const USAGE = `
 Kirim data transaksi setelah perintah, contoh\\:
@@ -379,10 +301,6 @@ function parseInput(text) {
 
   return { data: { token, orderId, product, customerId, name, date }, error: null };
 }
-
-/* =============================================================
-   COMMAND HANDLER
-   ============================================================= */
 
 export default {
   name: "pdf",
