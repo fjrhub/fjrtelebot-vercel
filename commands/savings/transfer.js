@@ -15,8 +15,7 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) =>
-  Number(String(v).replace(/\./g, "").replace(",", "."));
+const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
 
 const format = (n) => new Intl.NumberFormat("id-ID").format(n);
 
@@ -114,17 +113,13 @@ export default {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
     const rows = await fetchAllRows();
-    
-    // Parse arg: /transfer admin → withAdmin = true
+
     const args = (ctx.message?.text || "").split(/\s+/).slice(1);
     const withAdmin = args.includes("admin");
 
-    const msg = await ctx.reply(
-      "🔁 Transfer Antar Akun\n\nPilih akun asal:",
-      {
-        reply_markup: kbList(OPTIONS.akun, "transfer:akunAsal", false, true),
-      }
-    );
+    const msg = await ctx.reply("🔁 Transfer Antar Akun\n\nPilih akun asal:", {
+      reply_markup: kbList(OPTIONS.akun, "transfer:akunAsal", false, true),
+    });
 
     states.set(ctx.from.id, {
       step: "akunAsal",
@@ -172,7 +167,7 @@ export default {
         state.history.pop();
         return edit(
           "❌ Akun asal dan tujuan tidak boleh sama.\n\nPilih akun tujuan:",
-          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false)
+          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false),
         );
       }
       state.akunTujuan = value;
@@ -189,6 +184,16 @@ export default {
         return edit("❌ Saldo akun asal tidak mencukupi.");
       }
 
+      /* =========================
+         CATATAN FINAL
+      ========================= */
+
+      let catatanFinal = state.catatan;
+
+      if (state.withAdmin && state.admin > 0) {
+        catatanFinal += `, fee ${format(state.admin)}`;
+      }
+
       await appendRows([
         [
           "Pengeluaran",
@@ -202,7 +207,7 @@ export default {
           asal.saldo,
           asal.saldo - state.jumlahKirim,
           state.tag,
-          `Admin: ${state.admin} | ${state.catatan}`,
+          catatanFinal,
           now,
           now,
         ],
@@ -218,7 +223,7 @@ export default {
           tujuan.saldo,
           tujuan.saldo + state.jumlahTerima,
           state.tag,
-          `Admin: ${state.admin} | ${state.catatan}`,
+          catatanFinal,
           now,
           now,
         ],
@@ -227,7 +232,7 @@ export default {
       states.delete(ctx.from.id);
 
       return edit(
-`✅ TRANSFER BERHASIL DISIMPAN
+        `✅ TRANSFER BERHASIL DISIMPAN
 
 Deskripsi: ${state.deskripsi}
 
@@ -243,7 +248,7 @@ Saldo: ${format(tujuan.saldo)} → ${format(tujuan.saldo + state.jumlahTerima)}
 Tag: ${state.tag}
 Catatan: ${state.catatan}
 
-🕒 ${new Date().toLocaleString("id-ID")}`
+🕒 ${new Date().toLocaleString("id-ID")}`,
       );
     }
   },
@@ -258,11 +263,9 @@ Catatan: ${state.catatan}
     if (state.step === "deskripsi") {
       state.deskripsi = ctx.message.text;
       state.step = "jumlahKirim";
-
     } else if (state.step === "jumlahKirim") {
       state.jumlahKirim = toNumber(ctx.message.text);
-      
-      // Skip jumlahTerima jika bukan mode admin
+
       if (!state.withAdmin) {
         state.jumlahTerima = state.jumlahKirim;
         state.admin = 0;
@@ -270,22 +273,21 @@ Catatan: ${state.catatan}
       } else {
         state.step = "jumlahTerima";
       }
-
     } else if (state.step === "jumlahTerima") {
       state.jumlahTerima = toNumber(ctx.message.text);
 
       if (state.jumlahTerima > state.jumlahKirim) {
         state.history.pop();
-        return ctx.reply("❌ Jumlah diterima tidak boleh lebih besar dari jumlah kirim.");
+        return ctx.reply(
+          "❌ Jumlah diterima tidak boleh lebih besar dari jumlah kirim.",
+        );
       }
 
       state.admin = state.jumlahKirim - state.jumlahTerima;
       state.step = "tag";
-
     } else if (state.step === "tag") {
       state.tag = ctx.message.text;
       state.step = "catatan";
-
     } else if (state.step === "catatan") {
       state.catatan = ctx.message.text;
       state.step = "confirm";
@@ -310,13 +312,13 @@ Catatan: ${state.catatan}
       case "akunAsal":
         return edit(
           "🔁 Transfer Antar Akun\n\nPilih akun asal:",
-          kbList(OPTIONS.akun, "transfer:akunAsal", false, true)
+          kbList(OPTIONS.akun, "transfer:akunAsal", false, true),
         );
 
       case "akunTujuan":
         return edit(
           "Pilih akun tujuan:",
-          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false)
+          kbList(OPTIONS.akun, "transfer:akunTujuan", true, false),
         );
 
       case "deskripsi":
@@ -336,7 +338,7 @@ Catatan: ${state.catatan}
 
       case "confirm":
         return edit(
-`🧾 KONFIRMASI TRANSFER
+          `🧾 KONFIRMASI TRANSFER
 
 Deskripsi: ${state.deskripsi}
 
@@ -353,7 +355,7 @@ Tag: ${state.tag}
 Catatan: ${state.catatan}
 
 Lanjutkan?`,
-          kbConfirm()
+          kbConfirm(),
         );
     }
   },
