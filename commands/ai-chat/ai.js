@@ -3,13 +3,11 @@ dotenv.config({ path: ".env.local" });
 
 import { InputFile } from "grammy";
 import Groq from "groq-sdk";
-import { connectDB } from "../../db/db.js";
-import { AiHistory, AiMessage, AiLock } from "../../db/aiModels.js";
+import mongoose, { Schema, model } from "mongoose";
 
 /* ================= CONFIG ================= */
-
-if (!process.env.GROQ_API_KEY) {
-  throw new Error("Missing GROQ_API_KEY");
+if (!process.env.GROQ_API_KEY || !process.env.MONGODB_URI) {
+  throw new Error("Missing GROQ_API_KEY or MONGODB_URI");
 }
 
 const MODEL = "qwen/qwen3-32b";
@@ -17,234 +15,159 @@ const MAX_HISTORY = 10;
 const SAFE_LIMIT = 4000;
 
 /* ================= GROQ CLIENT ================= */
-
-const groq =
-  global._groq ??
-  new Groq({
-    apiKey: process.env.GROQ_API_KEY,
-  });
-
+const groq = global._groq ?? new Groq({ apiKey: process.env.GROQ_API_KEY });
 global._groq = groq;
 
-/* ================= DB HELPERS ================= */
+/* ================= MONGODB SCHEMAS ================= */
+const aiHistorySchema = new Schema({
+  chatId: { type: Number, required: true, unique: true, index: true },
+  messages: [{
+    role: { type: String, enum: ["user", "assistant"], required: true },
+    content: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+  }],
+  updatedAt: { type: Date, default: Date.now }
+}, { timestamps: false });
+aiHistorySchema.pre("save", function () { this.updatedAt = new Date(); });
 
+const aiMessageSchema = new Schema({
+  chatId: { type: Number, required: true, index: true },
+  messageId: { type: Number, required: true },
+  createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 7 }
+}, { timestamps: false });
+aiMessageSchema.index({ chatId: 1, messageId: 1 }, { unique: true });
+
+const aiLockSchema = new Schema({
+  chatId: { type: Number, required: true, unique: true, index: true },
+  createdAt: { type: Date, default: Date.now, expires: 60 }
+}, { timestamps: false });
+
+const AiHistory = mongoose.models.AiHistory ?? model("AiHistory", aiHistorySchema);
+const AiMessage = mongoose.models.AiMessage ?? model("AiMessage", aiMessageSchema);
+const AiLock = mongoose.models.AiLock ?? model("AiLock", aiLockSchema);
+
+/* ================= DB CONNECTION ================= */
+let dbConnected = false;
+export async function connectDB() {
+  if (dbConnected) return;
+  await mongoose.connect(process.env.MONGODB_URI, { dbName: "cahayamalam_bot" });
+  dbConnected = true;
+}
+export async function dropPendingUpdates(bot) {
+  try { await bot.api.deleteWebhook({ drop_pending_updates: true }); }
+  catch (err) { console.error("⚠️ Drop pending failed:", err.message); }
+}
+
+/* ================= DB HELPERS ================= */
 async function getHistory(chatId) {
   await connectDB();
   const doc = await AiHistory.findOne({ chatId });
-  return doc ? doc.messages.map((m) => ({ role: m.role, content: m.content })) : [];
+  return doc?.messages.map(m => ({ role: m.role, content: m.content })) || [];
 }
-
 async function saveHistory(chatId, messages) {
   await connectDB();
-  await AiHistory.findOneAndUpdate(
-    { chatId },
-    {
-      $set: {
-        messages: messages.slice(-MAX_HISTORY * 2),
-        updatedAt: new Date(),
-      },
-    },
-    { upsert: true, returnDocument: 'after' }
-  );
+  await AiHistory.findOneAndUpdate({ chatId }, {
+    $set: { messages: messages.slice(-MAX_HISTORY * 2), updatedAt: new Date() }
+  }, { upsert: true, returnDocument: "after" });
 }
-
 async function clearHistory(chatId) {
   await connectDB();
-  await AiHistory.findOneAndUpdate(
-    { chatId },
-    { $set: { messages: [], updatedAt: new Date() } },
-    { upsert: true }
-  );
+  await AiHistory.findOneAndUpdate({ chatId }, {
+    $set: { messages: [], updatedAt: new Date() }
+  }, { upsert: true });
 }
-
 async function trackAiMessage(chatId, messageId) {
   await connectDB();
-  try {
-    await AiMessage.create({ chatId, messageId });
-  } catch (err) {
-    // Duplicate key = sudah ada, abaikan
-    if (err.code !== 11000) console.error("trackAiMessage error:", err);
-  }
+  try { await AiMessage.create({ chatId, messageId }); }
+  catch (err) { if (err.code !== 11000) console.error("trackAiMessage:", err); }
 }
-
-/* ================= PROCESSING LOCK ================= */
-
-// Coba ambil lock untuk chatId — return true kalau berhasil, false kalau sudah ada
 async function acquireLock(chatId) {
   await connectDB();
-  try {
-    await AiLock.create({ chatId });
-    return true;
-  } catch (err) {
-    // Duplicate key = chatId sedang diproses, tolak request baru
-    if (err.code === 11000) return false;
-    throw err;
-  }
+  try { await AiLock.create({ chatId }); return true; }
+  catch (err) { return err.code === 11000 ? false : Promise.reject(err); }
 }
-
-// Lepas lock setelah selesai/error
 async function releaseLock(chatId) {
   await connectDB();
   await AiLock.deleteOne({ chatId });
 }
 
-/* ================= SPLIT MESSAGE ================= */
-
+/* ================= MESSAGE UTILS ================= */
 function splitMessage(text, limit = SAFE_LIMIT) {
   const chunks = [];
-
   while (text.length > limit) {
-    let splitIndex = text.lastIndexOf("\n\n", limit);
-    if (splitIndex === -1) splitIndex = text.lastIndexOf("\n", limit);
-    if (splitIndex === -1) splitIndex = text.lastIndexOf(" ", limit);
-    if (splitIndex === -1) splitIndex = limit;
-
-    chunks.push(text.slice(0, splitIndex).trim());
-    text = text.slice(splitIndex).trim();
+    let idx = text.lastIndexOf("\n\n", limit);
+    if (idx === -1) idx = text.lastIndexOf("\n", limit);
+    if (idx === -1) idx = text.lastIndexOf(" ", limit);
+    if (idx === -1) idx = limit;
+    chunks.push(text.slice(0, idx).trim());
+    text = text.slice(idx).trim();
   }
-
   if (text.length) chunks.push(text);
-
   return chunks;
 }
-
-/* ================= MARKDOWN V2 CONVERSION ================= */
-
 function escapeMarkdownV2(text) {
   return text.replace(/([_*[\]()~`>#+=|{}.!\\-])/g, "\\$1");
 }
-
 function convertToMarkdownV2(text) {
   const segments = [];
-
-  const tokenRegex =
-    /```[\s\S]*?```|`[^`]+`|\*\*(.+?)\*\*|__(.+?)__|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)|\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g;
-
-  let lastIndex = 0;
-  let match;
-
-  while ((match = tokenRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push(escapeMarkdownV2(text.slice(lastIndex, match.index)));
-    }
-
-    const full = match[0];
-
-    if (full.startsWith("```")) {
-      const inner = full.slice(3, full.length - 3).replace(/`/g, "\\`");
-      segments.push("```" + inner + "```");
-    } else if (full.startsWith("`")) {
-      const inner = full.slice(1, full.length - 1).replace(/`/g, "\\`");
-      segments.push("`" + inner + "`");
-    } else if (match[1] !== undefined) {
-      segments.push("*" + escapeMarkdownV2(match[1]) + "*");
-    } else if (match[2] !== undefined) {
-      segments.push("*" + escapeMarkdownV2(match[2]) + "*");
-    } else if (match[3] !== undefined) {
-      segments.push("_" + escapeMarkdownV2(match[3]) + "_");
-    } else if (match[4] !== undefined) {
-      segments.push("_" + escapeMarkdownV2(match[4]) + "_");
-    } else if (match[5] !== undefined && match[6] !== undefined) {
-      const linkText = escapeMarkdownV2(match[5]);
-      const url = match[6].replace(/[)]/g, "\\)");
-      segments.push(`[${linkText}](${url})`);
-    } else {
-      segments.push(escapeMarkdownV2(full));
-    }
-
-    lastIndex = match.index + full.length;
+  const regex = /```[\s\S]*?```|`[^`]+`|\*\*(.+?)\*\*|__(.+?)__|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)|\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g;
+  let last = 0, match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) segments.push(escapeMarkdownV2(text.slice(last, match.index)));
+    const [full, b1, b2, i1, i2, lt, url] = match;
+    if (full.startsWith("```")) segments.push("```" + full.slice(3, -3).replace(/`/g, "\\`") + "```");
+    else if (full.startsWith("`")) segments.push("`" + full.slice(1, -1).replace(/`/g, "\\`") + "`");
+    else if (b1 || b2) segments.push("*" + escapeMarkdownV2(b1 || b2) + "*");
+    else if (i1 || i2) segments.push("_" + escapeMarkdownV2(i1 || i2) + "_");
+    else if (lt && url) segments.push(`[${escapeMarkdownV2(lt)}](${url.replace(/[)]/g, "\\)")})`);
+    else segments.push(escapeMarkdownV2(full));
+    last = match.index + full.length;
   }
-
-  if (lastIndex < text.length) {
-    segments.push(escapeMarkdownV2(text.slice(lastIndex)));
-  }
-
+  if (last < text.length) segments.push(escapeMarkdownV2(text.slice(last)));
   return segments.join("");
 }
-
-/* ================= SEND MESSAGE ================= */
-
 async function sendMarkdownMessage(ctx, text) {
-  const chunks = splitMessage(text);
-
-  for (const chunk of chunks) {
+  for (const chunk of splitMessage(text)) {
     let converted;
-    try {
-      converted = convertToMarkdownV2(chunk);
-    } catch {
-      converted = null;
-    }
-
+    try { converted = convertToMarkdownV2(chunk); } catch { converted = null; }
     if (converted) {
       try {
-        const sent = await ctx.api.sendMessage(ctx.chat.id, converted, {
-          parse_mode: "MarkdownV2",
-          disable_web_page_preview: true,
-        });
+        const sent = await ctx.api.sendMessage(ctx.chat.id, converted, { parse_mode: "MarkdownV2", disable_web_page_preview: true });
         await trackAiMessage(ctx.chat.id, sent.message_id);
         continue;
-      } catch (err) {
-        console.error("MarkdownV2 SEND ERROR:", err.message);
-        console.error("Converted text:\n", converted);
-      }
+      } catch (e) { console.error("MarkdownV2 error:", e.message); }
     }
-
-    // Fallback: plain text
     try {
-      const sent = await ctx.api.sendMessage(ctx.chat.id, chunk, {
-        disable_web_page_preview: true,
-      });
+      const sent = await ctx.api.sendMessage(ctx.chat.id, chunk, { disable_web_page_preview: true });
       await trackAiMessage(ctx.chat.id, sent.message_id);
-    } catch (err) {
-      console.error("PLAIN SEND ERROR:", err.message);
-    }
+    } catch (e) { console.error("Plain send error:", e.message); }
   }
 }
 
 /* ================= GROQ REQUEST ================= */
-
 async function sendToGroq(messages) {
   try {
-    const completion = await groq.chat.completions.create({
-      model: MODEL,
-      messages,
-      temperature: 0.9,
-      max_tokens: 6000,
+    const res = await groq.chat.completions.create({
+      model: MODEL, messages, temperature: 0.9, max_tokens: 6000
     });
-
-    let content =
-      completion.choices?.[0]?.message?.content || "❌ No response received.";
-
+    let content = res.choices?.[0]?.message?.content || "❌ No response.";
     content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-
-    // Strip heading markdown yang masih lolos dari instruksi prompt
     content = content.replace(/^#{1,6}\s+\*\*(.+?)\s*\*\*\s*$/gm, "**$1**");
     content = content.replace(/^#{1,6}\s+(.+)$/gm, "**$1**");
-
-    // Fix bold yang punya trailing spasi sebelum penutup: **text  ** → **text**
     content = content.replace(/\*\*(.+?)\s+\*\*/g, "**$1**");
-
     return content;
   } catch (err) {
     console.error("GROQ ERROR:", err);
-
     if (err.status === 429) return "⏳ Rate limit\\. Coba lagi sebentar\\.";
     if (err.status === 401) return "❌ API key salah\\.";
-
     return "❌ Gagal mengambil jawaban AI\\.";
   }
 }
 
-/* ========================= SYSTEM PROMPT ========================= */
-
+/* ================= SYSTEM PROMPT ================= */
 function buildSystemPrompt(ctx) {
   const from = ctx.from;
-  const user = from?.username
-    ? `@${from.username}`
-    : from?.first_name
-    ? from.first_name + (from.last_name ? ` ${from.last_name}` : "")
-    : "Unknown";
-
+  const user = from?.username ? `@${from.username}` : from?.first_name ? from.first_name + (from.last_name ? ` ${from.last_name}` : "") : "Unknown";
   return `Kamu adalah CahayaMalamBot, AI assistant yang friendly dan helpful.
 
 **Karakter:**
@@ -283,217 +206,104 @@ function buildSystemPrompt(ctx) {
 }
 
 /* ================= CORE AI HANDLER ================= */
-
 async function handleAICore(ctx, inputText) {
   const chatId = ctx.chat.id;
-
-  // Cek apakah chatId sedang diproses
   const locked = await acquireLock(chatId);
   if (!locked) {
     await ctx.reply("⏳ Lagi proses pesanmu sebelumnya, tunggu sebentar ya.");
     return;
   }
-
   try {
     await ctx.replyWithChatAction("typing");
-
     const history = await getHistory(chatId);
-
-    /* ================= REPLIED MESSAGE CONTEXT ================= */
-
-    const repliedMsg = ctx.message?.reply_to_message;
+    const replied = ctx.message?.reply_to_message;
     let repliedContext = "";
-
-    if (repliedMsg) {
-      const repliedText = repliedMsg.text || repliedMsg.caption || "";
-      const repliedFrom = repliedMsg.from?.first_name || "Unknown";
-      const isFromBot = repliedMsg.from?.is_bot ?? false;
-
-      if (repliedText) {
-        if (isFromBot) {
-          repliedContext = `[User sedang membahas pesan bot ini]\n"""\n${repliedText}\n"""`;
-        } else {
-          repliedContext = `[User sedang membahas pesan dari ${repliedFrom}]\n"""\n${repliedText}\n"""`;
-        }
-      }
+    if (replied) {
+      const txt = replied.text || replied.caption || "";
+      const nm = replied.from?.first_name || "Unknown";
+      const isBot = replied.from?.is_bot ?? false;
+      if (txt) repliedContext = `[User sedang membahas pesan ${isBot ? "bot" : `dari ${nm}`}]\n"""\n${txt}\n"""`;
     }
-
-    const fullUserInput = repliedContext
-      ? `${repliedContext}\n\n${inputText}`
-      : inputText;
-
+    const fullInput = repliedContext ? `${repliedContext}\n\n${inputText}` : inputText;
     const messages = [
       { role: "system", content: buildSystemPrompt(ctx) },
       ...history,
-      { role: "user", content: fullUserInput },
+      { role: "user", content: fullInput }
     ];
-
     const reply = await sendToGroq(messages);
-
-    const updatedHistory = [
-      ...history,
-      { role: "user", content: fullUserInput },
-      { role: "assistant", content: reply },
-    ];
-
-    await saveHistory(chatId, updatedHistory);
+    await saveHistory(chatId, [...history, { role: "user", content: fullInput }, { role: "assistant", content: reply }]);
     await sendMarkdownMessage(ctx, reply);
   } finally {
-    // Selalu lepas lock, bahkan kalau error
     await releaseLock(chatId);
   }
 }
 
 /* ================= EXPORTED HELPER ================= */
-
-// Dipanggil dari handler.js untuk cek apakah message_id tertentu adalah pesan AI
 export async function isAiMessage(chatId, messageId) {
   await connectDB();
-  const found = await AiMessage.exists({ chatId, messageId });
-  return !!found;
+  return !!(await AiMessage.exists({ chatId, messageId }));
 }
 
-/* ================= COMMAND ================= */
-
+/* ================= COMMAND EXPORT ================= */
 export default {
   name: "ai",
   description: "AI chat",
 
-  // Dipanggil saat user kirim dokumen — untuk handle /ai import
   async handleDocument(ctx) {
     const doc = ctx.message?.document;
     if (!doc) return;
-
-    // Hanya proses kalau nama file cocok dengan pola export kita
-    const isAiExport =
-      doc.file_name?.startsWith("ai-history-") && doc.file_name?.endsWith(".json");
-
-    if (!isAiExport) return;
-
-    const chatId = ctx.chat.id;
-
+    const isExport = doc.file_name?.startsWith("ai-history-") && doc.file_name?.endsWith(".json");
+    if (!isExport) return;
     try {
-      // Download file dari Telegram
       const file = await ctx.api.getFile(doc.file_id);
-      const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
-
-      const res = await fetch(fileUrl);
-      if (!res.ok) throw new Error("Gagal download file");
-
-      const raw = await res.text();
-      const parsed = JSON.parse(raw);
-
-      // Validasi struktur JSON
-      if (
-        !Array.isArray(parsed.messages) ||
-        parsed.messages.some((m) => !m.role || !m.content)
-      ) {
-        return ctx.reply("❌ Format file tidak valid. Pastikan file dari /ai export.");
+      const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Download failed");
+      const parsed = JSON.parse(await res.text());
+      if (!Array.isArray(parsed.messages) || parsed.messages.some(m => !m.role || !m.content)) {
+        return ctx.reply("❌ Format file tidak valid.");
       }
-
-      const messages = parsed.messages.filter((m) =>
-        ["user", "assistant"].includes(m.role)
-      );
-
-      await saveHistory(chatId, messages);
-
-      return ctx.reply(
-        `✅ History berhasil di-import!
-
-• ${messages.length} pesan dimuat
-• Export dari: ${parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString("id-ID") : "unknown"}`
-      );
+      const msgs = parsed.messages.filter(m => ["user", "assistant"].includes(m.role));
+      await saveHistory(ctx.chat.id, msgs);
+      return ctx.reply(`✅ History di-import!\n• ${msgs.length} pesan\n• Export: ${parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString("id-ID") : "unknown"}`);
     } catch (err) {
       console.error("IMPORT ERROR:", err);
-      if (err instanceof SyntaxError) {
-        return ctx.reply("❌ File JSON tidak valid atau korup.");
-      }
-      return ctx.reply("❌ Gagal import history.");
+      return ctx.reply(err instanceof SyntaxError ? "❌ File JSON korup." : "❌ Gagal import.");
     }
   },
 
-  // Dipanggil otomatis saat user reply pesan AI tanpa ketik /ai
   async handleReply(ctx) {
     const text = ctx.message?.text?.trim();
     if (!text || text.startsWith("/")) return;
-
-    try {
-      await handleAICore(ctx, text);
-    } catch (err) {
-      console.error(err);
-      ctx.reply("❌ Terjadi error.");
-    }
+    try { await handleAICore(ctx, text); }
+    catch (err) { console.error(err); ctx.reply("❌ Terjadi error."); }
   },
 
   async execute(ctx) {
     const text = ctx.message?.text?.trim();
     if (!text) return;
-
     const chatId = ctx.chat.id;
 
-    /* ================= RESET ================= */
-
-    if (text === "/ai reset") {
-      await clearHistory(chatId);
-      return ctx.reply("✅ History dihapus.");
-    }
-
-    /* ================= EXPORT ================= */
+    if (text === "/ai reset") { await clearHistory(chatId); return ctx.reply("✅ History dihapus."); }
 
     if (text === "/ai export") {
       const history = await getHistory(chatId);
-
-      if (!history.length) {
-        return ctx.reply("History kosong, belum ada yang bisa di-export.");
-      }
-
-      // Format JSON yang bisa langsung di-import ulang
-      const exportData = {
-        exportedAt: new Date().toISOString(),
-        chatId,
-        messageCount: history.length,
-        messages: history,
-      };
-
-      const json = JSON.stringify(exportData, null, 2);
-      const buffer = Buffer.from(json, "utf-8");
-      const filename = `ai-history-${chatId}-${Date.now()}.json`;
-
-      return ctx.replyWithDocument(new InputFile(buffer, filename), {
-        caption: `📦 *Export History*\n\n• ${history.length} pesan\n• Kirim balik file ini dengan /ai import untuk restore`,
-        parse_mode: "Markdown",
+      if (!history.length) return ctx.reply("History kosong.");
+      const data = { exportedAt: new Date().toISOString(), chatId, messageCount: history.length, messages: history };
+      const buf = Buffer.from(JSON.stringify(data, null, 2), "utf-8");
+      return ctx.replyWithDocument(new InputFile(buf, `ai-history-${chatId}-${Date.now()}.json`), {
+        caption: `📦 *Export History*\n• ${history.length} pesan\n• Kirim balik file ini dengan /ai import untuk restore`,
+        parse_mode: "Markdown"
       });
     }
 
-    /* ================= IMPORT ================= */
+    if (text === "/ai import") return ctx.reply("Kirim file JSON export sebagai dokumen.");
+    if (text === "/ai history") { ctx.message.text = "/ai export"; return this.execute(ctx); }
 
-    if (text === "/ai import") {
-      return ctx.reply(
-        "Kirim file JSON hasil export sebagai dokumen. Bot akan otomatis mendeteksi dan import history-nya."
-      );
-    }
+    const input = text.replace(/^\/ai\s*/i, "").trim();
+    if (!input) return ctx.reply("Gunakan:\n/ai pertanyaan");
 
-    /* ================= HISTORY (alias export) ================= */
-
-    if (text === "/ai history") {
-      // Redirect ke export supaya konsisten
-      ctx.message.text = "/ai export";
-      return this.execute(ctx);
-    }
-
-    /* ================= INPUT ================= */
-
-    const inputText = text.replace(/^\/ai\s*/i, "").trim();
-
-    if (!inputText) {
-      return ctx.reply("Gunakan:\n/ai pertanyaan");
-    }
-
-    try {
-      await handleAICore(ctx, inputText);
-    } catch (err) {
-      console.error(err);
-      ctx.reply("❌ Terjadi error.");
-    }
-  },
+    try { await handleAICore(ctx, input); }
+    catch (err) { console.error(err); ctx.reply("❌ Terjadi error."); }
+  }
 };
