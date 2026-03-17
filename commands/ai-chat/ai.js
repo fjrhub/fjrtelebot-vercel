@@ -13,6 +13,7 @@ if (!process.env.GROQ_API_KEY || !process.env.MONGODB_URI) {
 const MODEL = "qwen/qwen3-32b";
 const MAX_HISTORY = 10;
 const SAFE_LIMIT = 4000;
+const CACHE_TTL = 5 * 60 * 1000; // 5 menit
 
 /* ================= GROQ CLIENT ================= */
 const groq = global._groq ?? new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -39,7 +40,7 @@ aiMessageSchema.index({ chatId: 1, messageId: 1 }, { unique: true });
 
 const aiLockSchema = new Schema({
   chatId: { type: Number, required: true, unique: true, index: true },
-  createdAt: { type: Date, default: Date.now, expires: 60 }
+  createdAt: { type: Date, default: Date.now, expires: 30 } // 30 detik, lebih aman
 }, { timestamps: false });
 
 const AiHistory = mongoose.models.AiHistory ?? model("AiHistory", aiHistorySchema);
@@ -52,40 +53,104 @@ export async function connectDB() {
   if (dbConnected) return;
   await mongoose.connect(process.env.MONGODB_URI, { dbName: "cahayamalam_bot" });
   dbConnected = true;
+  console.log("🗄️ MongoDB connected");
 }
+
 export async function dropPendingUpdates(bot) {
   try { await bot.api.deleteWebhook({ drop_pending_updates: true }); }
   catch (err) { console.error("⚠️ Drop pending failed:", err.message); }
 }
 
+/* ================= IN-MEMORY CACHE ================= */
+const historyCache = new Map();
+
+function getCachedHistory(chatId) {
+  const cached = historyCache.get(chatId);
+  if (!cached) return null;
+  if (Date.now() - cached.updatedAt > CACHE_TTL) {
+    historyCache.delete(chatId);
+    return null;
+  }
+  return cached.messages;
+}
+
+function setCachedHistory(chatId, messages) {
+  historyCache.set(chatId, { messages, updatedAt: Date.now() });
+}
+
+function invalidateCache(chatId) {
+  historyCache.delete(chatId);
+}
+
+// Cleanup expired entries tiap menit
+setInterval(() => {
+  const now = Date.now();
+  for (const [chatId, data] of historyCache.entries()) {
+    if (now - data.updatedAt > CACHE_TTL) {
+      historyCache.delete(chatId);
+    }
+  }
+}, 60_000);
+
+// Monitoring cache size (opsional)
+setInterval(() => {
+  console.log(`📦 Cache size: ${historyCache.size} chats`);
+}, 5 * 60_000);
+
 /* ================= DB HELPERS ================= */
 async function getHistory(chatId) {
+  // 1. Cek cache dulu
+  const cached = getCachedHistory(chatId);
+  if (cached) return cached;
+
+  // 2. Fallback ke DB
   await connectDB();
-  const doc = await AiHistory.findOne({ chatId });
-  return doc?.messages.map(m => ({ role: m.role, content: m.content })) || [];
+  const doc = await AiHistory.findOne({ chatId }).lean(); // lean() = plain object, lebih cepat
+  const messages = doc?.messages?.map(m => ({ role: m.role, content: m.content })) || [];
+
+  // 3. Isi cache
+  setCachedHistory(chatId, messages);
+  return messages;
 }
+
 async function saveHistory(chatId, messages) {
-  await connectDB();
-  await AiHistory.findOneAndUpdate({ chatId }, {
-    $set: { messages: messages.slice(-MAX_HISTORY * 2), updatedAt: new Date() }
-  }, { upsert: true, returnDocument: "after" });
+  const trimmed = messages.slice(-MAX_HISTORY * 2);
+  
+  // 1. Update cache segera (optimistic)
+  setCachedHistory(chatId, trimmed);
+
+  // 2. Simpan ke DB (fire-and-forget dengan error handling)
+  connectDB().then(() =>
+    AiHistory.findOneAndUpdate(
+      { chatId },
+      { $set: { messages: trimmed, updatedAt: new Date() } },
+      { upsert: true, returnDocument: "after" }
+    ).catch(err => console.error(`❌ DB save error chat ${chatId}:`, err.message))
+  ).catch(err => console.error("❌ DB connect error:", err.message));
 }
+
 async function clearHistory(chatId) {
+  invalidateCache(chatId);
   await connectDB();
-  await AiHistory.findOneAndUpdate({ chatId }, {
-    $set: { messages: [], updatedAt: new Date() }
-  }, { upsert: true });
+  await AiHistory.findOneAndUpdate(
+    { chatId },
+    { $set: { messages: [], updatedAt: new Date() } },
+    { upsert: true }
+  );
 }
+
 async function trackAiMessage(chatId, messageId) {
   await connectDB();
   try { await AiMessage.create({ chatId, messageId }); }
   catch (err) { if (err.code !== 11000) console.error("trackAiMessage:", err); }
 }
+
 async function acquireLock(chatId) {
   await connectDB();
   try { await AiLock.create({ chatId }); return true; }
   catch (err) { return err.code === 11000 ? false : Promise.reject(err); }
 }
+
 async function releaseLock(chatId) {
   await connectDB();
   await AiLock.deleteOne({ chatId });
@@ -105,9 +170,11 @@ function splitMessage(text, limit = SAFE_LIMIT) {
   if (text.length) chunks.push(text);
   return chunks;
 }
+
 function escapeMarkdownV2(text) {
   return text.replace(/([_*[\]()~`>#+=|{}.!\\-])/g, "\\$1");
 }
+
 function convertToMarkdownV2(text) {
   const segments = [];
   const regex = /```[\s\S]*?```|`[^`]+`|\*\*(.+?)\*\*|__(.+?)__|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)|\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g;
@@ -126,6 +193,7 @@ function convertToMarkdownV2(text) {
   if (last < text.length) segments.push(escapeMarkdownV2(text.slice(last)));
   return segments.join("");
 }
+
 async function sendMarkdownMessage(ctx, text) {
   for (const chunk of splitMessage(text)) {
     let converted;
@@ -215,7 +283,11 @@ async function handleAICore(ctx, inputText) {
   }
   try {
     await ctx.replyWithChatAction("typing");
+    
+    // Get history (dari cache atau DB)
     const history = await getHistory(chatId);
+    
+    // Handle replied message context
     const replied = ctx.message?.reply_to_message;
     let repliedContext = "";
     if (replied) {
@@ -224,14 +296,24 @@ async function handleAICore(ctx, inputText) {
       const isBot = replied.from?.is_bot ?? false;
       if (txt) repliedContext = `[User sedang membahas pesan ${isBot ? "bot" : `dari ${nm}`}]\n"""\n${txt}\n"""`;
     }
+    
     const fullInput = repliedContext ? `${repliedContext}\n\n${inputText}` : inputText;
+    
     const messages = [
       { role: "system", content: buildSystemPrompt(ctx) },
       ...history,
       { role: "user", content: fullInput }
     ];
+    
     const reply = await sendToGroq(messages);
-    await saveHistory(chatId, [...history, { role: "user", content: fullInput }, { role: "assistant", content: reply }]);
+    
+    // Save ke history (cache + DB async)
+    await saveHistory(chatId, [
+      ...history,
+      { role: "user", content: fullInput },
+      { role: "assistant", content: reply }
+    ]);
+    
     await sendMarkdownMessage(ctx, reply);
   } finally {
     await releaseLock(chatId);
@@ -254,17 +336,21 @@ export default {
     if (!doc) return;
     const isExport = doc.file_name?.startsWith("ai-history-") && doc.file_name?.endsWith(".json");
     if (!isExport) return;
+    
     try {
       const file = await ctx.api.getFile(doc.file_id);
       const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Download failed");
+      
       const parsed = JSON.parse(await res.text());
       if (!Array.isArray(parsed.messages) || parsed.messages.some(m => !m.role || !m.content)) {
         return ctx.reply("❌ Format file tidak valid.");
       }
+      
       const msgs = parsed.messages.filter(m => ["user", "assistant"].includes(m.role));
       await saveHistory(ctx.chat.id, msgs);
+      
       return ctx.reply(`✅ History di-import!\n• ${msgs.length} pesan\n• Export: ${parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString("id-ID") : "unknown"}`);
     } catch (err) {
       console.error("IMPORT ERROR:", err);
@@ -284,13 +370,23 @@ export default {
     if (!text) return;
     const chatId = ctx.chat.id;
 
-    if (text === "/ai reset") { await clearHistory(chatId); return ctx.reply("✅ History dihapus."); }
+    if (text === "/ai reset") {
+      await clearHistory(chatId);
+      return ctx.reply("✅ History dihapus.");
+    }
 
     if (text === "/ai export") {
       const history = await getHistory(chatId);
       if (!history.length) return ctx.reply("History kosong.");
-      const data = { exportedAt: new Date().toISOString(), chatId, messageCount: history.length, messages: history };
+      
+      const data = {
+        exportedAt: new Date().toISOString(),
+        chatId,
+        messageCount: history.length,
+        messages: history
+      };
       const buf = Buffer.from(JSON.stringify(data, null, 2), "utf-8");
+      
       return ctx.replyWithDocument(new InputFile(buf, `ai-history-${chatId}-${Date.now()}.json`), {
         caption: `📦 *Export History*\n• ${history.length} pesan\n• Kirim balik file ini dengan /ai import untuk restore`,
         parse_mode: "Markdown"
