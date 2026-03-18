@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { InputFile } from "grammy";
 
 /* =========================
    GOOGLE SHEETS
@@ -34,16 +35,14 @@ const fmt = (n) => `Rp${new Intl.NumberFormat("id-ID").format(Number(n) || 0)}`;
 const toWIB = (iso) =>
   new Date(new Date(iso).getTime() + 7 * 60 * 60 * 1000);
 
-// Dapatkan tanggal Senin dari suatu tanggal
 const getMondayOf = (date) => {
   const d = new Date(date);
-  const day = d.getUTCDay() || 7; // 1=Sen ... 7=Min
+  const day = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() - (day - 1));
   d.setUTCHours(0, 0, 0, 0);
   return d;
 };
 
-// Format tanggal pendek: "03 Mar"
 const fmtShort = (date) =>
   date.toLocaleString("id-ID", {
     timeZone: "UTC",
@@ -51,7 +50,6 @@ const fmtShort = (date) =>
     month: "short",
   });
 
-// Nama bulan + tahun: "Maret 2025"
 const fmtMonthYear = (year, monthIndex) => {
   const d = new Date(Date.UTC(year, monthIndex, 1));
   return d.toLocaleString("id-ID", {
@@ -91,15 +89,13 @@ function agg(transactions) {
 
 const fmtNet = (net) => {
   const sign = net >= 0 ? "+" : "-";
-  const emoji = net >= 0 ? "📈" : "📉";
-  return `${emoji} ${sign}${fmt(Math.abs(net))}`;
+  return `${sign}${fmt(Math.abs(net))}`;
 };
 
 /* =========================
-   BUILD MESSAGE
+   BUILD MESSAGE (TXT)
 ========================= */
 function buildMessage(allTransactions) {
-  // Group by bulan
   const byMonth = {};
   for (const t of allTransactions) {
     if (!t.bulanKey) continue;
@@ -108,28 +104,31 @@ function buildMessage(allTransactions) {
   }
 
   const sortedMonths = Object.keys(byMonth).sort((a, b) => a.localeCompare(b));
-  if (!sortedMonths.length) return "📭 Belum ada transaksi.";
+  if (!sortedMonths.length) return "Belum ada transaksi.";
 
   const nowWIB = toWIB(new Date().toISOString());
   const lines = [];
 
-  lines.push(`💼 *Ringkasan Keuangan*`);
-  lines.push(`_Update: ${fmtShort(nowWIB)} ${nowWIB.getUTCFullYear()} • ${allTransactions.length} transaksi_`);
+  // HEADER
+  lines.push("================================");
+  lines.push("RINGKASAN KEUANGAN");
+  lines.push(`Update: ${fmtShort(nowWIB)} ${nowWIB.getUTCFullYear()}`);
+  lines.push(`Total Transaksi: ${allTransactions.length}`);
+  lines.push("================================");
 
   for (const monthKey of sortedMonths) {
     const txMonth = byMonth[monthKey];
     const [year, month] = monthKey.split("-").map(Number);
     const monthAgg = agg(txMonth);
 
-    lines.push(``);
-    lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`🗓 *${fmtMonthYear(year, month - 1)}*  _(${txMonth.length} transaksi)_`);
-    lines.push(`   🟢 Masuk : ${fmt(monthAgg.masuk)}`);
-    lines.push(`   🔴 Keluar: ${fmt(monthAgg.keluar)}`);
-    lines.push(`   ${fmtNet(monthAgg.net)}`);
-    lines.push(``);
+    lines.push("");
+    lines.push("--------------------------------");
+    lines.push(`Bulan : ${fmtMonthYear(year, month - 1)} (${txMonth.length} trx)`);
+    lines.push(`Masuk : ${fmt(monthAgg.masuk)}`);
+    lines.push(`Keluar: ${fmt(monthAgg.keluar)}`);
+    lines.push(`Net   : ${fmtNet(monthAgg.net)}`);
 
-    // Group by minggu
+    // GROUP BY WEEK
     const byWeek = {};
     for (const t of txMonth) {
       const key = t.monday.toISOString();
@@ -144,11 +143,11 @@ function buildMessage(allTransactions) {
       const sunday = new Date(w.monday);
       sunday.setUTCDate(w.monday.getUTCDate() + 6);
 
-      lines.push(`   📅 *Minggu ${i + 1}* · ${fmtShort(w.monday)}–${fmtShort(sunday)}  _(${w.txs.length} trx)_`);
-      lines.push(`      🟢 Masuk : ${fmt(weekAgg.masuk)}`);
-      lines.push(`      🔴 Keluar: ${fmt(weekAgg.keluar)}`);
-      lines.push(`      ${fmtNet(weekAgg.net)}`);
-      lines.push(``);
+      lines.push("");
+      lines.push(`  Minggu ${i + 1} (${fmtShort(w.monday)} - ${fmtShort(sunday)})`);
+      lines.push(`    Masuk : ${fmt(weekAgg.masuk)}`);
+      lines.push(`    Keluar: ${fmt(weekAgg.keluar)}`);
+      lines.push(`    Net   : ${fmtNet(weekAgg.net)}`);
     });
   }
 
@@ -167,11 +166,28 @@ export default {
     await ctx.reply("⏳ Memuat data...");
 
     const rows = await fetchTransactions();
-    if (!rows.length) return ctx.reply("📭 Belum ada transaksi.");
+    if (!rows.length) return ctx.reply("Belum ada transaksi.");
 
-    const allTransactions = rows.map(parseRow).filter((t) => t.dibuatPada);
+    const allTransactions = rows
+      .map(parseRow)
+      .filter((t) => t.dibuatPada);
+
     const text = buildMessage(allTransactions);
 
-    return ctx.reply(text, { parse_mode: "Markdown" });
+    // Buffer → file txt
+    const buffer = Buffer.from(text, "utf-8");
+
+    // Nama file dengan tanggal
+    const now = new Date();
+    const fileName = `ringkasan-${now.getFullYear()}-${String(
+      now.getMonth() + 1
+    ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}.txt`;
+
+    return ctx.replyWithDocument(
+      new InputFile(buffer, fileName),
+      {
+        caption: "Ringkasan keuangan berhasil dibuat",
+      }
+    );
   },
 };
