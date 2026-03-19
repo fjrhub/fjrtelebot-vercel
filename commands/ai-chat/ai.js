@@ -3,157 +3,88 @@ dotenv.config({ path: ".env.local" });
 
 import { InputFile } from "grammy";
 import Groq from "groq-sdk";
-import mongoose, { Schema, model } from "mongoose";
 
 /* ================= CONFIG ================= */
-if (!process.env.GROQ_API_KEY || !process.env.MONGODB_URI) {
-  throw new Error("Missing GROQ_API_KEY or MONGODB_URI");
+if (!process.env.GROQ_API_KEY) {
+  throw new Error("Missing GROQ_API_KEY");
 }
 
 const MODEL = "qwen/qwen3-32b";
 const MAX_HISTORY = 10;
 const SAFE_LIMIT = 4000;
 const CACHE_TTL = 5 * 60 * 1000; // 5 menit
+const LOCK_TTL = 30 * 1000; // 30 detik
+const MSG_TRACK_TTL = 7 * 24 * 60 * 60 * 1000; // 7 hari
 
 /* ================= GROQ CLIENT ================= */
 const groq = global._groq ?? new Groq({ apiKey: process.env.GROQ_API_KEY });
 global._groq = groq;
 
-/* ================= MONGODB SCHEMAS ================= */
-const aiHistorySchema = new Schema({
-  chatId: { type: Number, required: true, unique: true, index: true },
-  messages: [{
-    role: { type: String, enum: ["user", "assistant"], required: true },
-    content: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now }
-  }],
-  updatedAt: { type: Date, default: Date.now }
-}, { timestamps: false });
-aiHistorySchema.pre("save", function () { this.updatedAt = new Date(); });
+/* ================= IN-MEMORY STORAGE ================= */
+const historyStore = new Map(); // { [chatId]: { messages: [], updatedAt } }
+const messageTracker = new Map(); // { [`${chatId}_${messageId}`]: timestamp }
+const lockStore = new Map(); // { [chatId]: timestamp }
 
-const aiMessageSchema = new Schema({
-  chatId: { type: Number, required: true, index: true },
-  messageId: { type: Number, required: true },
-  createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 7 }
-}, { timestamps: false });
-aiMessageSchema.index({ chatId: 1, messageId: 1 }, { unique: true });
-
-const aiLockSchema = new Schema({
-  chatId: { type: Number, required: true, unique: true, index: true },
-  createdAt: { type: Date, default: Date.now, expires: 30 } // 30 detik, lebih aman
-}, { timestamps: false });
-
-const AiHistory = mongoose.models.AiHistory ?? model("AiHistory", aiHistorySchema);
-const AiMessage = mongoose.models.AiMessage ?? model("AiMessage", aiMessageSchema);
-const AiLock = mongoose.models.AiLock ?? model("AiLock", aiLockSchema);
-
-/* ================= DB CONNECTION ================= */
-let dbConnected = false;
-export async function connectDB() {
-  if (dbConnected) return;
-  await mongoose.connect(process.env.MONGODB_URI, { dbName: "cahayamalam_bot" });
-  dbConnected = true;
-  console.log("🗄️ MongoDB connected");
-}
-
-export async function dropPendingUpdates(bot) {
-  try { await bot.api.deleteWebhook({ drop_pending_updates: true }); }
-  catch (err) { console.error("⚠️ Drop pending failed:", err.message); }
-}
-
-/* ================= IN-MEMORY CACHE ================= */
-const historyCache = new Map();
-
-function getCachedHistory(chatId) {
-  const cached = historyCache.get(chatId);
-  if (!cached) return null;
-  if (Date.now() - cached.updatedAt > CACHE_TTL) {
-    historyCache.delete(chatId);
-    return null;
-  }
-  return cached.messages;
-}
-
-function setCachedHistory(chatId, messages) {
-  historyCache.set(chatId, { messages, updatedAt: Date.now() });
-}
-
-function invalidateCache(chatId) {
-  historyCache.delete(chatId);
-}
-
-// Cleanup expired entries tiap menit
+// Cleanup expired entries setiap 1 menit
 setInterval(() => {
   const now = Date.now();
-  for (const [chatId, data] of historyCache.entries()) {
-    if (now - data.updatedAt > CACHE_TTL) {
-      historyCache.delete(chatId);
-    }
+  for (const [chatId, data] of historyStore.entries()) {
+    if (now - data.updatedAt > CACHE_TTL) historyStore.delete(chatId);
+  }
+  for (const [key, ts] of messageTracker.entries()) {
+    if (now - ts > MSG_TRACK_TTL) messageTracker.delete(key);
+  }
+  for (const [chatId, ts] of lockStore.entries()) {
+    if (now - ts > LOCK_TTL) lockStore.delete(chatId);
   }
 }, 60_000);
 
-// Monitoring cache size (opsional)
-setInterval(() => {
-  console.log(`📦 Cache size: ${historyCache.size} chats`);
-}, 5 * 60_000);
-
-/* ================= DB HELPERS ================= */
-async function getHistory(chatId) {
-  // 1. Cek cache dulu
-  const cached = getCachedHistory(chatId);
-  if (cached) return cached;
-
-  // 2. Fallback ke DB
-  await connectDB();
-  const doc = await AiHistory.findOne({ chatId }).lean(); // lean() = plain object, lebih cepat
-  const messages = doc?.messages?.map(m => ({ role: m.role, content: m.content })) || [];
-
-  // 3. Isi cache
-  setCachedHistory(chatId, messages);
-  return messages;
+/* ================= STORAGE HELPERS ================= */
+function getHistory(chatId) {
+  const data = historyStore.get(chatId);
+  if (!data) return [];
+  if (Date.now() - data.updatedAt > CACHE_TTL) {
+    historyStore.delete(chatId);
+    return [];
+  }
+  return data.messages.map(m => ({ role: m.role, content: m.content }));
 }
 
-async function saveHistory(chatId, messages) {
+function saveHistory(chatId, messages) {
   const trimmed = messages.slice(-MAX_HISTORY * 2);
-  
-  // 1. Update cache segera (optimistic)
-  setCachedHistory(chatId, trimmed);
-
-  // 2. Simpan ke DB (fire-and-forget dengan error handling)
-  connectDB().then(() =>
-    AiHistory.findOneAndUpdate(
-      { chatId },
-      { $set: { messages: trimmed, updatedAt: new Date() } },
-      { upsert: true, returnDocument: "after" }
-    ).catch(err => console.error(`❌ DB save error chat ${chatId}:`, err.message))
-  ).catch(err => console.error("❌ DB connect error:", err.message));
+  historyStore.set(chatId, { messages: trimmed, updatedAt: Date.now() });
 }
 
-async function clearHistory(chatId) {
-  invalidateCache(chatId);
-  await connectDB();
-  await AiHistory.findOneAndUpdate(
-    { chatId },
-    { $set: { messages: [], updatedAt: new Date() } },
-    { upsert: true }
-  );
+function clearHistory(chatId) {
+  historyStore.delete(chatId);
 }
 
-async function trackAiMessage(chatId, messageId) {
-  await connectDB();
-  try { await AiMessage.create({ chatId, messageId }); }
-  catch (err) { if (err.code !== 11000) console.error("trackAiMessage:", err); }
+function trackAiMessage(chatId, messageId) {
+  messageTracker.set(`${chatId}_${messageId}`, Date.now());
 }
 
-async function acquireLock(chatId) {
-  await connectDB();
-  try { await AiLock.create({ chatId }); return true; }
-  catch (err) { return err.code === 11000 ? false : Promise.reject(err); }
+// ✅ EXPORTED: tetap bisa dipanggil dari file lain untuk cek apakah pesan itu dari AI
+export function isAiMessage(chatId, messageId) {
+  const key = `${chatId}_${messageId}`;
+  const ts = messageTracker.get(key);
+  if (!ts) return false;
+  if (Date.now() - ts > MSG_TRACK_TTL) {
+    messageTracker.delete(key);
+    return false;
+  }
+  return true;
 }
 
-async function releaseLock(chatId) {
-  await connectDB();
-  await AiLock.deleteOne({ chatId });
+function acquireLock(chatId) {
+  const now = Date.now();
+  const existing = lockStore.get(chatId);
+  if (existing && now - existing < LOCK_TTL) return false;
+  lockStore.set(chatId, now);
+  return true;
+}
+
+function releaseLock(chatId) {
+  lockStore.delete(chatId);
 }
 
 /* ================= MESSAGE UTILS ================= */
@@ -201,13 +132,13 @@ async function sendMarkdownMessage(ctx, text) {
     if (converted) {
       try {
         const sent = await ctx.api.sendMessage(ctx.chat.id, converted, { parse_mode: "MarkdownV2", disable_web_page_preview: true });
-        await trackAiMessage(ctx.chat.id, sent.message_id);
+        trackAiMessage(ctx.chat.id, sent.message_id); // ✅ Track pesan AI
         continue;
       } catch (e) { console.error("MarkdownV2 error:", e.message); }
     }
     try {
       const sent = await ctx.api.sendMessage(ctx.chat.id, chunk, { disable_web_page_preview: true });
-      await trackAiMessage(ctx.chat.id, sent.message_id);
+      trackAiMessage(ctx.chat.id, sent.message_id); // ✅ Track pesan AI
     } catch (e) { console.error("Plain send error:", e.message); }
   }
 }
@@ -276,7 +207,7 @@ function buildSystemPrompt(ctx) {
 /* ================= CORE AI HANDLER ================= */
 async function handleAICore(ctx, inputText) {
   const chatId = ctx.chat.id;
-  const locked = await acquireLock(chatId);
+  const locked = acquireLock(chatId);
   if (!locked) {
     await ctx.reply("⏳ Lagi proses pesanmu sebelumnya, tunggu sebentar ya.");
     return;
@@ -284,17 +215,20 @@ async function handleAICore(ctx, inputText) {
   try {
     await ctx.replyWithChatAction("typing");
     
-    // Get history (dari cache atau DB)
-    const history = await getHistory(chatId);
+    const history = getHistory(chatId);
     
-    // Handle replied message context
+    // ✅ Ambil konteks dari pesan yang direply (termasuk jika itu pesan AI)
     const replied = ctx.message?.reply_to_message;
     let repliedContext = "";
     if (replied) {
       const txt = replied.text || replied.caption || "";
       const nm = replied.from?.first_name || "Unknown";
       const isBot = replied.from?.is_bot ?? false;
-      if (txt) repliedContext = `[User sedang membahas pesan ${isBot ? "bot" : `dari ${nm}`}]\n"""\n${txt}\n"""`;
+      const isAi = isAiMessage(chatId, replied.message_id); // ✅ Cek apakah yang direply itu pesan AI
+      if (txt) {
+        const source = isAi ? "AI" : (isBot ? "bot" : `dari ${nm}`);
+        repliedContext = `[User sedang membahas pesan ${source}]\n"""\n${txt}\n"""`;
+      }
     }
     
     const fullInput = repliedContext ? `${repliedContext}\n\n${inputText}` : inputText;
@@ -307,8 +241,7 @@ async function handleAICore(ctx, inputText) {
     
     const reply = await sendToGroq(messages);
     
-    // Save ke history (cache + DB async)
-    await saveHistory(chatId, [
+    saveHistory(chatId, [
       ...history,
       { role: "user", content: fullInput },
       { role: "assistant", content: reply }
@@ -316,14 +249,8 @@ async function handleAICore(ctx, inputText) {
     
     await sendMarkdownMessage(ctx, reply);
   } finally {
-    await releaseLock(chatId);
+    releaseLock(chatId);
   }
-}
-
-/* ================= EXPORTED HELPER ================= */
-export async function isAiMessage(chatId, messageId) {
-  await connectDB();
-  return !!(await AiMessage.exists({ chatId, messageId }));
 }
 
 /* ================= COMMAND EXPORT ================= */
@@ -349,7 +276,7 @@ export default {
       }
       
       const msgs = parsed.messages.filter(m => ["user", "assistant"].includes(m.role));
-      await saveHistory(ctx.chat.id, msgs);
+      saveHistory(ctx.chat.id, msgs);
       
       return ctx.reply(`✅ History di-import!\n• ${msgs.length} pesan\n• Export: ${parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString("id-ID") : "unknown"}`);
     } catch (err) {
@@ -371,12 +298,12 @@ export default {
     const chatId = ctx.chat.id;
 
     if (text === "/ai reset") {
-      await clearHistory(chatId);
+      clearHistory(chatId);
       return ctx.reply("✅ History dihapus.");
     }
 
     if (text === "/ai export") {
-      const history = await getHistory(chatId);
+      const history = getHistory(chatId);
       if (!history.length) return ctx.reply("History kosong.");
       
       const data = {
