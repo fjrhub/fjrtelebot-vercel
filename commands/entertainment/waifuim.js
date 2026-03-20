@@ -28,10 +28,10 @@ export default {
     try {
       await sendOrEditStatus("📡 Fetching image from waifu.im...");
       const res = await axios.get(
-        createUrl("waifuim", "/search?included_tags=waifu"),
+        createUrl("waifuim", "/images?IncludedTags=waifu"),
         { timeout: 8000 }
       );
-      const imageUrl = res.data?.images?.[0]?.url;
+      const imageUrl = res.data?.items?.[0]?.url; // GANTI images jadi items
       if (!imageUrl) throw new Error("Invalid response from waifu.im");
       await ctx.replyWithPhoto(imageUrl);
       await deleteStatus();
