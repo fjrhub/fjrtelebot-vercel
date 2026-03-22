@@ -1,5 +1,6 @@
 export default {
   name: "delete",
+  aliases: ["d"],
   async execute(ctx) {
     // 1. Cek apakah pesan ini merupakan reply dari pesan lain
     if (!ctx.message?.reply_to_message) {
