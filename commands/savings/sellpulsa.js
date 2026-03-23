@@ -17,7 +17,10 @@ const states = new Map();
 ========================= */
 const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
 
-const formatRupiah = (n) => "Rp" + Math.abs(n).toLocaleString("id-ID");
+const formatRupiah = (n) => {
+  const abs = Math.abs(n).toLocaleString("id-ID");
+  return n < 0 ? `-Rp${abs}` : `Rp${abs}`;
+};
 
 /* =========================
    GOOGLE SHEETS
@@ -68,10 +71,13 @@ async function appendRows(values) {
    KEYBOARD
 ========================= */
 const kbList = (list, prefix, showBack = false, showCancel = false) => {
-  const buttons = list.map((v) => [{ text: v, callback_data: `${prefix}:${v}` }]);
+  const buttons = list.map((v) => [
+    { text: v, callback_data: `${prefix}:${v}` },
+  ]);
   const footer = [];
 
-  if (showBack) footer.push({ text: "⬅️ Back", callback_data: "sellpulsa:back" });
+  if (showBack)
+    footer.push({ text: "⬅️ Back", callback_data: "sellpulsa:back" });
   if (showCancel)
     footer.push({ text: "❌ Cancel", callback_data: "sellpulsa:cancel" });
 
@@ -81,9 +87,15 @@ const kbList = (list, prefix, showBack = false, showCancel = false) => {
 
 const kbText = (showBack = false) => {
   if (showBack) {
-    return { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "sellpulsa:back" }]] };
+    return {
+      inline_keyboard: [[{ text: "⬅️ Back", callback_data: "sellpulsa:back" }]],
+    };
   }
-  return { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "sellpulsa:cancel" }]] };
+  return {
+    inline_keyboard: [
+      [{ text: "❌ Cancel", callback_data: "sellpulsa:cancel" }],
+    ],
+  };
 };
 
 const kbConfirm = () => ({
@@ -102,12 +114,13 @@ export default {
 
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
+
     const rows = await fetchAllRows();
     const msg = await ctx.reply(
       "🔁 Jual Pulsa / Top-up\n\nPilih akun penerima pembayaran:",
       {
         reply_markup: kbList(OPTIONS.akun, "sellpulsa:akunMasuk", false, true),
-      }
+      },
     );
 
     states.set(ctx.from.id, {
@@ -145,8 +158,6 @@ export default {
     }
 
     const [, step, value] = data.split(":");
-
-    // Simpan riwayat sebelum update langkah
     state.history.push(state.step);
 
     if (step === "akunMasuk") {
@@ -208,6 +219,12 @@ export default {
       await appendRows(entries);
 
       const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
+
+      let warning = "";
+      if (keuntungan < 0) {
+        warning = "\n⚠️ Transaksi ini rugi (kemungkinan input ketuker)";
+      }
+
       const successText = `✅ Transaksi jual pulsa berhasil disimpan!
 
 🧾 DETAIL:
@@ -220,7 +237,7 @@ Akun Masuk: ${state.akunMasuk} (Cash)
 Akun Keluar: ${state.akunKeluar} (Transfer)
 
 Tag: ${state.tag}
-Catatan: ${state.catatan}`;
+Catatan: ${state.catatan}${warning}`;
 
       states.delete(ctx.from.id);
       return edit(successText);
@@ -232,7 +249,6 @@ Catatan: ${state.catatan}`;
     if (!state) return;
 
     await ctx.deleteMessage().catch(() => {});
-
     state.history.push(state.step);
 
     if (state.step === "deskripsi") {
@@ -265,25 +281,38 @@ Catatan: ${state.catatan}`;
       case "akunMasuk":
         return edit(
           "🔁 Jual Pulsa / Top-up\n\nPilih akun penerima pembayaran:",
-          kbList(OPTIONS.akun, "sellpulsa:akunMasuk", false, true)
+          kbList(OPTIONS.akun, "sellpulsa:akunMasuk", false, true),
         );
+
       case "akunKeluar":
         return edit(
           "Pilih akun pengeluaran (dompet pulsa):",
-          kbList(OPTIONS.akun, "sellpulsa:akunKeluar", true, false)
+          kbList(OPTIONS.akun, "sellpulsa:akunKeluar", true, false),
         );
+
       case "deskripsi":
-        return edit("Masukkan deskripsi transaksi (misal: Pulsa Tri 20k):", kbText(true));
+        return edit("Masukkan deskripsi transaksi:", kbText(true));
+
       case "jumlahMasuk":
         return edit("Masukkan jumlah DITERIMA dari pembeli:", kbText(true));
+
       case "jumlahKeluar":
-        return edit("Masukkan jumlah DIBERIKAN ke pembeli (nilai pulsa):", kbText(true));
+        return edit("Masukkan jumlah DIBERIKAN ke pembeli:", kbText(true));
+
       case "tag":
-        return edit("Masukkan tag (misal: Pulsa, Gopay, dll):", kbText(true));
+        return edit("Masukkan tag:", kbText(true));
+
       case "catatan":
-        return edit("Masukkan catatan tambahan:", kbText(true));
+        return edit("Masukkan catatan:", kbText(true));
+
       case "confirm": {
         const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
+
+        let warning = "";
+        if (keuntungan < 0) {
+          warning = "\n⚠️ Kayaknya jumlahnya ketuker (rugi). Coba cek lagi!";
+        }
+
         const confirmText = `🧾 KONFIRMASI JUAL PULSA
 
 Deskripsi: ${state.deskripsi}
@@ -295,9 +324,10 @@ Akun Masuk: ${state.akunMasuk}
 Akun Keluar: ${state.akunKeluar}
 
 Tag: ${state.tag}
-Catatan: ${state.catatan}
+Catatan: ${state.catatan}${warning}
 
 Lanjutkan?`;
+
         return edit(confirmText, kbConfirm());
       }
     }
