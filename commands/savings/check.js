@@ -4,7 +4,7 @@ import { InputFile } from "grammy";
 /* =========================
    DAFTAR AKUN (EDIT DI SINI SAJA)
 ========================= */
-const ALL_WALLETS = ["wallet", "dana", "seabank"];
+const ALL_WALLETS = ["wallet", "dana", "seabank", "fjlsaldo", "gopay"];
 // Tambah akun cukup:
 // const ALL_WALLETS = ["wallet", "dana", "seabank", "gopay"];
 
