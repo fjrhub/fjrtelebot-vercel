@@ -43,7 +43,7 @@ const OPTIONS = {
     Pemasukan: {
       Gaji: ["Gaji Bulanan", "Bonus", "THR"],
       Usaha: ["Penjualan", "Jasa", "Komisi"],
-      Investasi: ["Crypto", "Saham", "Dividen", "Bunga Bank"],
+      Investasi: ["Crypto", "Saham", "Emas", "Dividen", "Bunga Bank"],
       Hadiah: ["Uang Saku", "Hadiah", "Donasi"],
       Refund: ["Refund Belanja", "Cashback"],
       Lainnya: ["Uang Saku", "Bantuan", "Pemasukan Lain"],
