@@ -174,6 +174,12 @@ export default {
 
     if (step === "save") {
       const now = new Date().toISOString();
+
+      // ❌ BLOCK kalau akun sama
+      if (state.akunMasuk === state.akunKeluar) {
+        return edit("❌ Akun masuk dan keluar tidak boleh sama.");
+      }
+
       const akunMasukInfo = getLastSaldo(state.rows, state.akunMasuk);
       const akunKeluarInfo = getLastSaldo(state.rows, state.akunKeluar);
 
@@ -221,8 +227,13 @@ export default {
       const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
 
       let warning = "";
+
       if (keuntungan < 0) {
-        warning = "\n⚠️ Transaksi ini rugi (kemungkinan input ketuker)";
+        warning += "\n⚠️ Transaksi ini rugi (kemungkinan input ketuker)";
+      }
+
+      if (state.akunMasuk === state.akunKeluar) {
+        warning += "\n⚠️ Akun masuk dan keluar sama";
       }
 
       const successText = `✅ Transaksi jual pulsa berhasil disimpan!
@@ -309,8 +320,13 @@ Catatan: ${state.catatan}${warning}`;
         const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
 
         let warning = "";
+
         if (keuntungan < 0) {
-          warning = "\n⚠️ Kayaknya jumlahnya ketuker (rugi). Coba cek lagi!";
+          warning += "\n⚠️ Kayaknya jumlahnya ketuker (rugi). Coba cek lagi!";
+        }
+
+        if (state.akunMasuk === state.akunKeluar) {
+          warning += "\n⚠️ Akun masuk dan keluar sama! Ini tidak masuk akal.";
         }
 
         const confirmText = `🧾 KONFIRMASI JUAL PULSA
