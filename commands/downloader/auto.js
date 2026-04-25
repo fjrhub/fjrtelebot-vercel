@@ -11,15 +11,26 @@ export default {
     const userId = ctx.from?.id;
     if (!chatId) return;
 
-    const rawInput = ctx.message?.text?.trim();
-    if (!rawInput) return;
+    const input = ctx.message?.text?.trim();
+    if (!input) return;
 
-    // === PARSE SLIDE EXCLUDE FEATURE: "<url> -25" → hapus slide ke-2 dan ke-5 ===
-    const slideExcludeMatch = rawInput.match(/^(.+?)\s+-(\d+)\s*$/);
-    const input = slideExcludeMatch ? slideExcludeMatch[1].trim() : rawInput;
-    const excludedSlides = slideExcludeMatch
-      ? [...new Set(slideExcludeMatch[2].split("").map(Number))]
-      : [];
+    // === PARSE INPUT FOR SLIDE EXCLUSION ===
+    // Format: "https://link -25" -> hapus slide 2 dan 5
+    const parseInput = (input) => {
+      const parts = input.split(' -');
+      const url = parts[0].trim();
+      const excludedSlides = new Set();
+      
+      if (parts.length > 1 && parts[1]) {
+        // Parse angka per digit: "25" -> [2, 5]
+        const slideNumbers = parts[1].trim().split('').map(Number).filter(n => !isNaN(n));
+        slideNumbers.forEach(n => excludedSlides.add(n));
+      }
+      
+      return { url, excludedSlides };
+    };
+    
+    const { url: mediaUrl, excludedSlides } = parseInput(input);
 
     // === GLOBAL LOCK TO PREVENT DOUBLE EXECUTION ===
     if (processingUsers.has(userId)) {
@@ -42,9 +53,10 @@ export default {
       const firstName = ctx.from.first_name;
       const mention = username ? `@${username}` : firstName;
 
-      const isTikTok = tiktokRegex.test(input);
-      const isInstagram = instagramRegex.test(input);
-      const isFacebook = facebookRegex.test(input);
+      // Gunakan mediaUrl yang sudah diparse untuk regex testing
+      const isTikTok = tiktokRegex.test(mediaUrl);
+      const isInstagram = instagramRegex.test(mediaUrl);
+      const isFacebook = facebookRegex.test(mediaUrl);
       if (!isTikTok && !isInstagram && !isFacebook) return;
 
       try {
@@ -67,12 +79,6 @@ export default {
           : n >= 1_000
             ? (n / 1_000).toFixed(1) + "K"
             : n.toString();
-
-      // === FILTER SLIDE: hapus index (1-based) yang ada di excludedSlides ===
-      const filterSlides = (arr) => {
-        if (!excludedSlides.length) return arr;
-        return arr.filter((_, i) => !excludedSlides.includes(i + 1));
-      };
 
       // Platform detection helper
       const getPlatformFromUrl = () => {
@@ -113,7 +119,16 @@ export default {
           }
 
           if (photos.length) {
-            const filteredPhotos = filterSlides(photos);
+            // Filter out excluded slides (1-based index)
+            const filteredPhotos = photos.filter((_, index) => {
+              const slideNumber = index + 1;
+              return !excludedSlides.has(slideNumber);
+            });
+            
+            if (filteredPhotos.length === 0) {
+              throw new Error("All photos were excluded by slide filter.");
+            }
+            
             const groups = chunkArray(filteredPhotos, 10);
             for (const grp of groups) {
               const mediaGroup = grp.map((url) => ({
@@ -160,7 +175,16 @@ export default {
           Array.isArray(data.media?.image_slide) &&
           data.media.image_slide.length > 0
         ) {
-          const filteredSlides = filterSlides(data.media.image_slide);
+          // Filter out excluded slides (1-based index)
+          const filteredSlides = data.media.image_slide.filter((_, index) => {
+            const slideNumber = index + 1;
+            return !excludedSlides.has(slideNumber);
+          });
+          
+          if (filteredSlides.length === 0) {
+            throw new Error("All slides were excluded by slide filter.");
+          }
+          
           const groups = chunkArray(filteredSlides, 10);
 
           for (const grp of groups) {
@@ -179,7 +203,6 @@ export default {
               );
             }
 
-            // 1.5 second delay between photo submission batches
             await delay(500);
           }
           return;
@@ -199,7 +222,7 @@ export default {
               err.description || err.message,
             );
           }
-          return; // without delay in the video section
+          return;
         }
 
         throw new Error("API 2 returned no valid downloadable content.");
@@ -233,7 +256,16 @@ export default {
 
         // If the photo
         if (photos.length > 0) {
-          const filteredPhotos = filterSlides(photos);
+          // Filter out excluded slides (1-based index)
+          const filteredPhotos = photos.filter((_, index) => {
+            const slideNumber = index + 1;
+            return !excludedSlides.has(slideNumber);
+          });
+          
+          if (filteredPhotos.length === 0) {
+            throw new Error("All photos were excluded by slide filter.");
+          }
+          
           const groups = chunkArray(
             filteredPhotos.map((p) => p.url),
             10,
@@ -247,7 +279,7 @@ export default {
             }));
 
             await ctx.api.sendMediaGroup(chatId, mediaGroup);
-            await delay(500); // Small delay for Telegram rate limit
+            await delay(500);
           }
 
           return;
@@ -266,7 +298,7 @@ export default {
         throw new Error("API 3 returned no valid downloadable content.");
       };
 
-      // Facebook handlers
+      // Facebook handlers (video only - no changes needed)
       const fbHandler1 = async (ctx, chatId, data) => {
         if (!data || !Array.isArray(data.data))
           throw new Error("Invalid FB API 1 format.");
@@ -335,7 +367,16 @@ export default {
         }
 
         if (photos.length) {
-          const filteredPhotos = filterSlides(photos);
+          // Filter out excluded slides (1-based index)
+          const filteredPhotos = photos.filter((_, index) => {
+            const slideNumber = index + 1;
+            return !excludedSlides.has(slideNumber);
+          });
+          
+          if (filteredPhotos.length === 0) {
+            throw new Error("All photos were excluded by slide filter.");
+          }
+          
           const maxSend = filteredPhotos.slice(0, 10);
           await ctx.api.sendMediaGroup(
             chatId,
@@ -348,18 +389,15 @@ export default {
       };
 
       const igHandler2 = async (ctx, chatId, data) => {
-        // 🔹 Initial data validation
         if (!data || typeof data !== "object") {
           throw new Error(
             "Invalid IG API 2 format: Root data missing or invalid.",
           );
         }
 
-        // 🔹 Detect data structure (sometimes using 'result', sometimes directly object)
         const result =
           data.result && typeof data.result === "object" ? data.result : data;
 
-        // 🔹 Fetch all media URLs
         const mediaUrls = Array.isArray(result.url)
           ? result.url.filter(Boolean)
           : typeof result.url === "string"
@@ -370,15 +408,12 @@ export default {
           throw new Error("API 2 returned empty or invalid URLs.");
         }
 
-        // 🔹 Fetch metadata (optional)
         const isVideo = Boolean(result.isVideo);
         const likes = result.like || 0;
         const comments = result.comment || 0;
 
-        // 🔹 Create a simple caption (emoji ❤️ 💬)
         const caption = `${likes > 0 ? `❤️ ${toNumberFormat(likes)}` : ""}${comments > 0 ? `   💬 ${toNumberFormat(comments)}` : ""}\n\n🔗 Source: Archive\n📱 Platform: ${platform}\n👤 Request by: ${mention}`;
 
-        // 🔹
         if (isVideo) {
           await ctx.api.sendVideo(chatId, mediaUrls[0], {
             caption,
@@ -388,7 +423,17 @@ export default {
           return;
         }
 
-        const groups = chunkArray(filterSlides(mediaUrls), 10); // send per 10 to avoid timeout
+        // Filter out excluded slides (1-based index)
+        const filteredUrls = mediaUrls.filter((_, index) => {
+          const slideNumber = index + 1;
+          return !excludedSlides.has(slideNumber);
+        });
+        
+        if (filteredUrls.length === 0) {
+          throw new Error("All photos were excluded by slide filter.");
+        }
+
+        const groups = chunkArray(filteredUrls, 10);
         for (const grp of groups) {
           const mediaGroup = grp.map((url, idx) => ({
             type: "photo",
@@ -397,9 +442,8 @@ export default {
           }));
 
           await ctx.api.sendMediaGroup(chatId, mediaGroup);
-          if (groups.length > 1) await delay(500); // delay between batches
+          if (groups.length > 1) await delay(500);
         }
-        throw new Error("API 2 returned no valid downloadable content.");
       };
 
       const igHandler3 = async (ctx, chatId, data) => {
@@ -413,7 +457,6 @@ export default {
         const videos = mediaList.filter((m) => m.type === "video" && m.url);
         const images = mediaList.filter((m) => m.type === "image" && m.url);
 
-        // Send video if any
         if (videos.length > 0) {
           await ctx.api.sendVideo(chatId, videos[0].url, {
             caption: `🔗 Source: Vreden\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
@@ -423,9 +466,17 @@ export default {
           return;
         }
 
-        // Send all images if there is no video
         if (images.length > 0) {
-          const filteredImages = filterSlides(images);
+          // Filter out excluded slides (1-based index)
+          const filteredImages = images.filter((_, index) => {
+            const slideNumber = index + 1;
+            return !excludedSlides.has(slideNumber);
+          });
+          
+          if (filteredImages.length === 0) {
+            throw new Error("All images were excluded by slide filter.");
+          }
+          
           const groups = chunkArray(
             filteredImages.map((img) => img.url),
             10,
@@ -456,7 +507,7 @@ export default {
           active.siputzx && {
             url: createUrl(
               "siputzx",
-              `/api/d/tiktok/v2?url=${encodeURIComponent(input)}`,
+              `/api/d/tiktok/v2?url=${encodeURIComponent(mediaUrl)}`,
             ),
             handler: tthandler1,
             label: "Siputzx - TikTok",
@@ -464,7 +515,7 @@ export default {
           active.archive && {
             url: createUrl(
               "archive",
-              `/api/download/tiktok?url=${encodeURIComponent(input)}`,
+              `/api/download/tiktok?url=${encodeURIComponent(mediaUrl)}`,
             ),
             handler: tthandler2,
             label: "Archive - TikTok",
@@ -472,7 +523,7 @@ export default {
           active.vreden && {
             url: createUrl(
               "vreden",
-              `/api/v1/download/tiktok?url=${encodeURIComponent(input)}`,
+              `/api/v1/download/tiktok?url=${encodeURIComponent(mediaUrl)}`,
             ),
             handler: tthandler3,
             label: "Vreden - TikTok",
@@ -486,7 +537,7 @@ export default {
           active.siputzx && {
             url: createUrl(
               "siputzx",
-              `/api/d/igdl?url=${encodeURIComponent(input)}`,
+              `/api/d/igdl?url=${encodeURIComponent(mediaUrl)}`,
             ),
             handler: igHandler1,
             label: "Siputzx - Instagram",
@@ -494,7 +545,7 @@ export default {
           active.archive && {
             url: createUrl(
               "archive",
-              `/api/download/instagram?url=${encodeURIComponent(input)}`,
+              `/api/download/instagram?url=${encodeURIComponent(mediaUrl)}`,
             ),
             handler: igHandler2,
             label: "Archive - Instagram",
@@ -502,7 +553,7 @@ export default {
           active.vreden && {
             url: createUrl(
               "vreden",
-              `/api/v1/download/instagram?url=${encodeURIComponent(input)}`,
+              `/api/v1/download/instagram?url=${encodeURIComponent(mediaUrl)}`,
             ),
             handler: igHandler3,
             label: "Vreden - Instagram",
@@ -516,7 +567,7 @@ export default {
           active.siputzx && {
             url: createUrl(
               "siputzx",
-              `/api/d/facebook?url=${encodeURIComponent(input)}`,
+              `/api/d/facebook?url=${encodeURIComponent(mediaUrl)}`,
             ),
             handler: fbHandler1,
             label: "Siputzx - Facebook",
@@ -524,7 +575,7 @@ export default {
           active.archive && {
             url: createUrl(
               "archive",
-              `/api/download/facebook?url=${encodeURIComponent(input)}`,
+              `/api/download/facebook?url=${encodeURIComponent(mediaUrl)}`,
             ),
             handler: fbHandler2,
             label: "Archive - Facebook",
@@ -532,7 +583,7 @@ export default {
           active.vreden && {
             url: createUrl(
               "vreden",
-              `/api/v1/download/facebook?url=${encodeURIComponent(input)}`,
+              `/api/v1/download/facebook?url=${encodeURIComponent(mediaUrl)}`,
             ),
             handler: fbHandler3,
             label: "Vreden - Facebook",
@@ -549,7 +600,7 @@ export default {
 
       await Promise.all(
         validApis.map(async (api, i) => {
-          if (sent) return; // if someone has already succeeded, skip it
+          if (sent) return;
 
           const controller = controllers[i];
           const start = Date.now();
@@ -560,7 +611,6 @@ export default {
               timeout: 8000,
             });
 
-            // If there is another API that is successful, immediately stop execution.
             if (sent) return;
 
             const duration = ((Date.now() - start) / 1000).toFixed(2);
@@ -572,12 +622,11 @@ export default {
 
             if (!sent) {
               sent = true;
-              controllers.forEach((c) => c.abort()); // stop other APIs
+              controllers.forEach((c) => c.abort());
               console.log(`🚀 Use: ${api.label} (${duration}s)`);
               await api.handler(ctx, chatId, data);
             }
           } catch (err) {
-            // stop log error if there is a success
             if (sent) return;
 
             const duration = ((Date.now() - start) / 1000).toFixed(2);
