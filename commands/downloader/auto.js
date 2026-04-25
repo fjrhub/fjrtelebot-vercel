@@ -11,23 +11,44 @@ export default {
     const userId = ctx.from?.id;
     if (!chatId) return;
 
-    const input = ctx.message?.text?.trim();
-    if (!input) return;
+    const rawInput = ctx.message?.text?.trim();
+    if (!rawInput) return;
 
-    // === GLOBAL LOCK TO PREVENT DOUBLE EXECUTION ===
+    // ==================================================
+    // FORMAT BARU:
+    // https://link..... -25
+    // artinya hapus slide ke 2 dan 5
+    // ==================================================
+    let input = rawInput;
+    let removeSlides = [];
+
+    const match = rawInput.match(/^(https?:\/\/\S+)\s*-(\d+)$/);
+
+    if (match) {
+      input = match[1];
+      removeSlides = match[2]
+        .split("")
+        .map((n) => parseInt(n))
+        .filter((n) => !isNaN(n) && n > 0);
+    }
+
+    // === GLOBAL LOCK ===
     if (processingUsers.has(userId)) {
       await ctx.reply(
         "⏳ Please wait, we are processing your previous request...",
       );
       return;
     }
+
     processingUsers.add(userId);
 
     try {
       const tiktokRegex =
         /^(?:https?:\/\/)?(?:www\.|vm\.|vt\.)?tiktok\.com\/[^\s]+$/i;
+
       const instagramRegex =
         /^(?:https?:\/\/)?(?:www\.)?instagram\.com\/(reel|p|tv)\/[A-Za-z0-9_-]+\/?(?:\?[^ ]*)?$/i;
+
       const facebookRegex =
         /^(?:https?:\/\/)?(?:www\.|web\.)?facebook\.com\/(?:share\/(?:r|v|p)\/|reel\/|watch\?v=|permalink\.php\?story_fbid=|[^\/]+\/posts\/|video\.php\?v=)[^\s]+$/i;
 
@@ -38,6 +59,7 @@ export default {
       const isTikTok = tiktokRegex.test(input);
       const isInstagram = instagramRegex.test(input);
       const isFacebook = facebookRegex.test(input);
+
       if (!isTikTok && !isInstagram && !isFacebook) return;
 
       try {
@@ -45,537 +67,282 @@ export default {
       } catch {}
 
       const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
       const chunkArray = (arr, size) => {
         const res = [];
-        for (let i = 0; i < arr.length; i += size)
+        for (let i = 0; i < arr.length; i += size) {
           res.push(arr.slice(i, i + size));
+        }
         return res;
       };
 
-      const toNumberFormat = (n) =>
-        new Intl.NumberFormat("id-ID").format(n || 0);
-      const formatNumber = (n) =>
-        n >= 1_000_000
-          ? (n / 1_000_000).toFixed(1) + "M"
-          : n >= 1_000
-            ? (n / 1_000).toFixed(1) + "K"
-            : n.toString();
+      // ==================================================
+      // FILTER SLIDE
+      // ==================================================
+      const filterSlides = (arr = []) => {
+        if (!removeSlides.length) return arr;
 
-      // Platform detection helper
+        return arr.filter((_, index) => {
+          const slideNumber = index + 1;
+          return !removeSlides.includes(slideNumber);
+        });
+      };
+
       const getPlatformFromUrl = () => {
         if (isTikTok) return "TikTok";
         if (isInstagram) return "Instagram";
         if (isFacebook) return "Facebook";
         return "Unknown";
       };
+
       const platform = getPlatformFromUrl();
 
-      // -------------------- HANDLERS --------------------
-
-      // TikTok handler variations
+      // ==================================================
+      // TIKTOK
+      // ==================================================
       const tthandler1 = async (ctx, chatId, data) => {
-        try {
-          const payload = data?.data ? data.data : data;
-          if (!payload || !payload.download)
-            throw new Error("Invalid TikTok API response structure.");
+        const payload = data?.data ? data.data : data;
 
-          const { download } = payload;
-          const videos = Array.isArray(download.video)
-            ? download.video.filter(Boolean)
-            : [];
-          const photos = Array.isArray(download.photo)
-            ? download.photo.filter(Boolean)
-            : [];
-
-          if (!videos.length && !photos.length)
-            throw new Error("No downloadable media found from TikTok API.");
-
-          if (videos.length) {
-            const firstVideo = videos[0];
-            await ctx.api.sendVideo(chatId, firstVideo, {
-              caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
-              parse_mode: "Markdown",
-            });
-            return;
-          }
-
-          if (photos.length) {
-            const groups = chunkArray(photos, 10);
-            for (const grp of groups) {
-              const mediaGroup = grp.map((url) => ({
-                type: "photo",
-                media: url,
-              }));
-
-              try {
-                await ctx.api.sendMediaGroup(chatId, mediaGroup);
-              } catch (e) {
-                if (
-                  e.error_code === 429 ||
-                  e.description?.includes("Too Many Requests")
-                ) {
-                  await delay(1000);
-                }
-              }
-
-              await delay(500);
-            }
-          }
-        } catch (err) {
-          throw new Error("Handler 1 failed to process media.");
-        }
-      };
-
-      const tthandler2 = async (ctx, chatId, data) => {
-        if (!data || typeof data !== "object" || !data.metadata) {
-          throw new Error("Invalid data format: metadata missing.");
-        }
-
-        const md = data.metadata;
-        const statsOnly = [
-          `Views: ${toNumberFormat(md.view)}`,
-          `Comments: ${toNumberFormat(md.comment)}`,
-          `Shares: ${toNumberFormat(md.share)}`,
-          `Downloads: ${toNumberFormat(md.download)}`,
-        ].join("\n");
-
-        const caption = `Duration: ${md.durasi}s\n\n${statsOnly}\n\n🔗 Source: Archive\n📱 Platform: ${platform}\n👤 Request by: ${mention}`;
-
-        // Jika ada image slide
-        if (
-          Array.isArray(data.media?.image_slide) &&
-          data.media.image_slide.length > 0
-        ) {
-          const groups = chunkArray(data.media.image_slide, 10);
-
-          for (const grp of groups) {
-            const mediaGroup = grp.map((url, idx) => ({
-              type: "photo",
-              media: url,
-              ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
-            }));
-
-            try {
-              await ctx.api.sendMediaGroup(chatId, mediaGroup);
-            } catch (err) {
-              console.error(
-                "⚠️ Failed to send media group:",
-                err.description || err.message,
-              );
-            }
-
-            // 1.5 second delay between photo submission batches
-            await delay(500);
-          }
-          return;
-        }
-
-        // If there is a video
-        if (data.media?.play && md.durasi > 0) {
-          try {
-            await ctx.api.sendVideo(chatId, data.media.play, {
-              caption,
-              parse_mode: "Markdown",
-              supports_streaming: true,
-            });
-          } catch (err) {
-            console.error(
-              "⚠️ Failed to send video:",
-              err.description || err.message,
-            );
-          }
-          return; // without delay in the video section
-        }
-
-        throw new Error("API 2 returned no valid downloadable content.");
-      };
-
-      const tthandler3 = async (ctx, chatId, data) => {
-        if (!data || typeof data !== "object") {
-          throw new Error("Invalid API 3 data.");
-        }
-
-        const photos = Array.isArray(data.data)
-          ? data.data.filter((item) => item.type === "photo")
+        const videos = Array.isArray(payload.download?.video)
+          ? payload.download.video.filter(Boolean)
           : [];
-        const video = Array.isArray(data.data)
-          ? data.data.find(
-              (item) =>
-                item.type === "nowatermark" || item.type === "nowatermark_hd",
-            )
-          : null;
 
-        const stats = data.stats || {};
-        const statsText = [
-          `👁 Views: ${stats.views ?? "?"}`,
-          `❤️ Likes: ${stats.likes ?? "?"}`,
-          `💬 Comments: ${stats.comment ?? "?"}`,
-          `🔁 Shares: ${stats.share ?? "?"}`,
-          `⬇️ Downloads: ${stats.download ?? "?"}`,
-        ].join("\n");
+        const photos = Array.isArray(payload.download?.photo)
+          ? payload.download.photo.filter(Boolean)
+          : [];
 
-        const caption = `${statsText}\n\n🔗 Source: Vreden\n📱 Platform: ${platform}\n👤 Request by: ${mention}`;
-
-        // If the photo
-        if (photos.length > 0) {
-          const groups = chunkArray(
-            photos.map((p) => p.url),
-            10,
-          );
-
-          for (const grp of groups) {
-            const mediaGroup = grp.map((url, idx) => ({
-              type: "photo",
-              media: url,
-              ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
-            }));
-
-            await ctx.api.sendMediaGroup(chatId, mediaGroup);
-            await delay(500); // Small delay for Telegram rate limit
-          }
-
-          return;
-        }
-
-        // If the video
-        if (video?.url) {
-          await ctx.api.sendVideo(chatId, video.url, {
-            caption,
-            parse_mode: "Markdown",
-            supports_streaming: true,
+        if (videos.length) {
+          await ctx.api.sendVideo(chatId, videos[0], {
+            caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
           });
           return;
         }
 
-        throw new Error("API 3 returned no valid downloadable content.");
+        if (photos.length) {
+          const finalPhotos = filterSlides(photos);
+
+          const groups = chunkArray(finalPhotos, 10);
+
+          for (const grp of groups) {
+            await ctx.api.sendMediaGroup(
+              chatId,
+              grp.map((url) => ({
+                type: "photo",
+                media: url,
+              })),
+            );
+            await delay(500);
+          }
+        }
       };
 
-      // Facebook handlers
-      const fbHandler1 = async (ctx, chatId, data) => {
-        if (!data || !Array.isArray(data.data))
-          throw new Error("Invalid FB API 1 format.");
-        const hdMp4Video = data.data.find(
-          (item) => item.format === "mp4" && item.resolution === "HD",
-        );
-        if (!hdMp4Video?.url) throw new Error("HD MP4 URL not found.");
+      const tthandler2 = async (ctx, chatId, data) => {
+        if (
+          Array.isArray(data.media?.image_slide) &&
+          data.media.image_slide.length
+        ) {
+          const finalPhotos = filterSlides(data.media.image_slide);
 
-        await ctx.api.sendVideo(chatId, hdMp4Video.url, {
-          caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
-          parse_mode: "Markdown",
-        });
+          const groups = chunkArray(finalPhotos, 10);
+
+          for (const grp of groups) {
+            await ctx.api.sendMediaGroup(
+              chatId,
+              grp.map((url) => ({
+                type: "photo",
+                media: url,
+              })),
+            );
+            await delay(500);
+          }
+
+          return;
+        }
+
+        if (data.media?.play) {
+          await ctx.api.sendVideo(chatId, data.media.play, {
+            caption: `🔗 Source: Archive\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
+          });
+        }
       };
 
-      const fbHandler2 = async (ctx, chatId, data) => {
-        if (!data) throw new Error("Invalid FB API 2 format.");
-        const videoUrl = data.media?.[2] || data.media?.[0] || null;
-        if (!videoUrl) throw new Error("No HD video URL found in API 2.");
+      const tthandler3 = async (ctx, chatId, data) => {
+        const photos = Array.isArray(data.data)
+          ? data.data
+              .filter((item) => item.type === "photo")
+              .map((item) => item.url)
+          : [];
 
-        await ctx.api.sendVideo(chatId, videoUrl, {
-          caption: `🔗 Source: Archive\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
-          parse_mode: "Markdown",
-        });
+        const video = Array.isArray(data.data)
+          ? data.data.find(
+              (item) =>
+                item.type === "nowatermark" ||
+                item.type === "nowatermark_hd",
+            )
+          : null;
+
+        if (photos.length) {
+          const finalPhotos = filterSlides(photos);
+
+          const groups = chunkArray(finalPhotos, 10);
+
+          for (const grp of groups) {
+            await ctx.api.sendMediaGroup(
+              chatId,
+              grp.map((url) => ({
+                type: "photo",
+                media: url,
+              })),
+            );
+            await delay(500);
+          }
+
+          return;
+        }
+
+        if (video?.url) {
+          await ctx.api.sendVideo(chatId, video.url, {
+            caption: `🔗 Source: Vreden\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
+          });
+        }
       };
 
-      const fbHandler3 = async (ctx, chatId, data) => {
-        if (!data || !data.download)
-          throw new Error("Invalid API data structure.");
-
-        const videoUrl = data.download.hd || data.download.sd;
-        const thumb = data.thumbnail || null;
-
-        if (!videoUrl)
-          throw new Error("No valid video URL found from API 3 (Vreden).");
-
-        await ctx.api.sendVideo(chatId, videoUrl, {
-          caption: `🔗 Source: Vreden\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
-          parse_mode: "Markdown",
-          ...(thumb ? { thumbnail: thumb } : {}),
-        });
-      };
-
-      // Instagram handlers
-      const igHandler1 = async (ctx, chatId, data) => {
-        const results = Array.isArray(data)
-          ? data
-          : Array.isArray(data.data)
-            ? data.data
-            : [];
-
-        if (!results.length)
-          throw new Error("Invalid or empty API data format.");
-
-        const urls = results.map((i) => i?.url).filter(Boolean);
-        if (!urls.length) throw new Error("No valid media URLs found.");
+      // ==================================================
+      // INSTAGRAM
+      // ==================================================
+      const igHandler = async (ctx, chatId, data) => {
+        const urls = Array.isArray(data?.data)
+          ? data.data.map((x) => x.url).filter(Boolean)
+          : [];
 
         const video = urls.find((u) => u.includes(".mp4"));
         const photos = urls.filter((u) => !u.includes(".mp4"));
 
         if (video) {
           await ctx.api.sendVideo(chatId, video, {
-            caption: `🔗 Source: Siputzx\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
-            parse_mode: "Markdown",
+            caption: `📱 Platform: ${platform}\n👤 Request by: ${mention}`,
           });
           return;
         }
 
         if (photos.length) {
-          const maxSend = photos.slice(0, 10);
-          await ctx.api.sendMediaGroup(
-            chatId,
-            maxSend.map((url) => ({ type: "photo", media: url })),
-          );
-          return;
-        }
+          const finalPhotos = filterSlides(photos);
 
-        throw new Error("API 1 returned no valid downloadable content.");
-      };
+          const groups = chunkArray(finalPhotos, 10);
 
-      const igHandler2 = async (ctx, chatId, data) => {
-        // 🔹 Initial data validation
-        if (!data || typeof data !== "object") {
-          throw new Error(
-            "Invalid IG API 2 format: Root data missing or invalid.",
-          );
-        }
-
-        // 🔹 Detect data structure (sometimes using 'result', sometimes directly object)
-        const result =
-          data.result && typeof data.result === "object" ? data.result : data;
-
-        // 🔹 Fetch all media URLs
-        const mediaUrls = Array.isArray(result.url)
-          ? result.url.filter(Boolean)
-          : typeof result.url === "string"
-            ? [result.url]
-            : [];
-
-        if (!mediaUrls.length) {
-          throw new Error("API 2 returned empty or invalid URLs.");
-        }
-
-        // 🔹 Fetch metadata (optional)
-        const isVideo = Boolean(result.isVideo);
-        const likes = result.like || 0;
-        const comments = result.comment || 0;
-
-        // 🔹 Create a simple caption (emoji ❤️ 💬)
-        const caption = `${likes > 0 ? `❤️ ${toNumberFormat(likes)}` : ""}${comments > 0 ? `   💬 ${toNumberFormat(comments)}` : ""}\n\n🔗 Source: Archive\n📱 Platform: ${platform}\n👤 Request by: ${mention}`;
-
-        // 🔹
-        if (isVideo) {
-          await ctx.api.sendVideo(chatId, mediaUrls[0], {
-            caption,
-            parse_mode: "Markdown",
-            supports_streaming: true,
-          });
-          return;
-        }
-
-        const groups = chunkArray(mediaUrls, 10); // send per 10 to avoid timeout
-        for (const grp of groups) {
-          const mediaGroup = grp.map((url, idx) => ({
-            type: "photo",
-            media: url,
-            ...(idx === 0 ? { caption, parse_mode: "Markdown" } : {}),
-          }));
-
-          await ctx.api.sendMediaGroup(chatId, mediaGroup);
-          if (groups.length > 1) await delay(500); // delay between batches
-        }
-        throw new Error("API 2 returned no valid downloadable content.");
-      };
-
-      const igHandler3 = async (ctx, chatId, data) => {
-        const root = data.result ? data.result : data;
-
-        if (!root?.data || !Array.isArray(root.data)) {
-          throw new Error("Invalid Instagram API structure.");
-        }
-
-        const mediaList = root.data;
-        const videos = mediaList.filter((m) => m.type === "video" && m.url);
-        const images = mediaList.filter((m) => m.type === "image" && m.url);
-
-        // Send video if any
-        if (videos.length > 0) {
-          await ctx.api.sendVideo(chatId, videos[0].url, {
-            caption: `🔗 Source: Vreden\n📱 Platform: ${platform}\n👤 Request by: ${mention}`,
-            parse_mode: "Markdown",
-            supports_streaming: true,
-          });
-          return;
-        }
-
-        // Send all images if there is no video
-        if (images.length > 0) {
-          const groups = chunkArray(
-            images.map((img) => img.url),
-            10,
-          );
-          for (const group of groups) {
-            const mediaGroup = group.map((url) => ({
-              type: "photo",
-              media: url,
-            }));
-            await ctx.api.sendMediaGroup(chatId, mediaGroup);
+          for (const grp of groups) {
+            await ctx.api.sendMediaGroup(
+              chatId,
+              grp.map((url) => ({
+                type: "photo",
+                media: url,
+              })),
+            );
             await delay(500);
           }
-          return;
         }
-        throw new Error("API 3 returned no valid downloadable content.");
       };
 
-      const enableStatus = {
-        tikTok: { siputzx: true, archive: true, vreden: true },
-        instagram: { siputzx: true, archive: true, vreden: true },
-        facebook: { siputzx: true, archive: true, vreden: true },
+      // ==================================================
+      // FACEBOOK
+      // ==================================================
+      const fbHandler = async (ctx, chatId, data) => {
+        const video =
+          data?.download?.hd ||
+          data?.download?.sd ||
+          data?.media?.[0] ||
+          null;
+
+        if (!video) throw new Error("No video found");
+
+        await ctx.api.sendVideo(chatId, video, {
+          caption: `📱 Platform: ${platform}\n👤 Request by: ${mention}`,
+        });
       };
 
+      // ==================================================
+      // API LIST
+      // ==================================================
       const apis = [];
+
       if (isTikTok) {
-        const active = enableStatus.tikTok;
         apis.push(
-          active.siputzx && {
+          {
             url: createUrl(
               "siputzx",
               `/api/d/tiktok/v2?url=${encodeURIComponent(input)}`,
             ),
             handler: tthandler1,
-            label: "Siputzx - TikTok",
           },
-          active.archive && {
+          {
             url: createUrl(
               "archive",
               `/api/download/tiktok?url=${encodeURIComponent(input)}`,
             ),
             handler: tthandler2,
-            label: "Archive - TikTok",
           },
-          active.vreden && {
+          {
             url: createUrl(
               "vreden",
               `/api/v1/download/tiktok?url=${encodeURIComponent(input)}`,
             ),
             handler: tthandler3,
-            label: "Vreden - TikTok",
           },
         );
       }
 
       if (isInstagram) {
-        const active = enableStatus.instagram;
-        apis.push(
-          active.siputzx && {
-            url: createUrl(
-              "siputzx",
-              `/api/d/igdl?url=${encodeURIComponent(input)}`,
-            ),
-            handler: igHandler1,
-            label: "Siputzx - Instagram",
-          },
-          active.archive && {
-            url: createUrl(
-              "archive",
-              `/api/download/instagram?url=${encodeURIComponent(input)}`,
-            ),
-            handler: igHandler2,
-            label: "Archive - Instagram",
-          },
-          active.vreden && {
-            url: createUrl(
-              "vreden",
-              `/api/v1/download/instagram?url=${encodeURIComponent(input)}`,
-            ),
-            handler: igHandler3,
-            label: "Vreden - Instagram",
-          },
-        );
+        apis.push({
+          url: createUrl(
+            "siputzx",
+            `/api/d/igdl?url=${encodeURIComponent(input)}`,
+          ),
+          handler: igHandler,
+        });
       }
 
       if (isFacebook) {
-        const active = enableStatus.facebook;
-        apis.push(
-          active.siputzx && {
-            url: createUrl(
-              "siputzx",
-              `/api/d/facebook?url=${encodeURIComponent(input)}`,
-            ),
-            handler: fbHandler1,
-            label: "Siputzx - Facebook",
-          },
-          active.archive && {
-            url: createUrl(
-              "archive",
-              `/api/download/facebook?url=${encodeURIComponent(input)}`,
-            ),
-            handler: fbHandler2,
-            label: "Archive - Facebook",
-          },
-          active.vreden && {
-            url: createUrl(
-              "vreden",
-              `/api/v1/download/facebook?url=${encodeURIComponent(input)}`,
-            ),
-            handler: fbHandler3,
-            label: "Vreden - Facebook",
-          },
-        );
+        apis.push({
+          url: createUrl(
+            "vreden",
+            `/api/v1/download/facebook?url=${encodeURIComponent(input)}`,
+          ),
+          handler: fbHandler,
+        });
       }
 
-      const validApis = apis.filter(Boolean);
-      if (validApis.length === 0) return;
-
-      // === PARALLEL REQUEST + HANDLER AT ONCE ===
       let sent = false;
-      const controllers = validApis.map(() => new AbortController());
 
       await Promise.all(
-        validApis.map(async (api, i) => {
-          if (sent) return; // if someone has already succeeded, skip it
-
-          const controller = controllers[i];
-          const start = Date.now();
+        apis.map(async (api) => {
+          if (sent) return;
 
           try {
             const res = await axios.get(api.url, {
-              signal: controller.signal,
               timeout: 8000,
             });
 
-            // If there is another API that is successful, immediately stop execution.
             if (sent) return;
-
-            const duration = ((Date.now() - start) / 1000).toFixed(2);
-            console.log(`✅ ${api.label} fetched in ${duration}s`);
 
             const data =
-              res.result || res.data?.result || res.data?.data || res.data;
-            if (!data) throw new Error("Empty data");
+              res.data?.result ||
+              res.data?.data ||
+              res.data;
 
-            if (!sent) {
-              sent = true;
-              controllers.forEach((c) => c.abort()); // stop other APIs
-              console.log(`🚀 Use: ${api.label} (${duration}s)`);
-              await api.handler(ctx, chatId, data);
-            }
-          } catch (err) {
-            // stop log error if there is a success
-            if (sent) return;
+            if (!data) return;
 
-            const duration = ((Date.now() - start) / 1000).toFixed(2);
-            console.warn(
-              `⚠️ ${api.label} failed after ${duration}s: ${err.message}`,
-            );
-          }
+            sent = true;
+            await api.handler(ctx, chatId, data);
+          } catch {}
         }),
       );
 
       if (!sent) {
-        await ctx.reply("⚠️ All APIs failed to respond or are invalid.");
+        await ctx.reply("⚠️ All APIs failed.");
       }
     } catch (err) {
-      console.error("❌ Fatal Error:", err);
-      await ctx.reply("⚠️ An error occurred while processing the request.");
+      console.error(err);
+      await ctx.reply("⚠️ Error.");
     } finally {
       processingUsers.delete(userId);
     }
