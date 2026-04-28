@@ -15,9 +15,10 @@ const OPTIONS = {
       "Pendidikan",
       "Belanja",
       "Investasi",
+      "Hutang",
       "Lainnya",
     ],
-    Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Lainnya"],
+    Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Hutang", "Lainnya"],
   },
 
   subKategori: {
@@ -37,6 +38,7 @@ const OPTIONS = {
       ],
       Belanja: ["Online", "Offline", "Langganan"],
       Investasi: ["Crypto", "Saham", "Emas", "Reksa Dana"],
+      Hutang: ["Bayar Hutang", "Cicilan", "Potongan Hutang"],
       Lainnya: ["Uang Kas", "Kewajiban", "Pengeluaran Rutin", "Pengeluaran Lain"],
     },
 
@@ -46,6 +48,7 @@ const OPTIONS = {
       Investasi: ["Crypto", "Saham", "Emas", "Dividen", "Bunga Bank"],
       Hadiah: ["Uang Saku", "Hadiah", "Donasi"],
       Refund: ["Refund Belanja", "Cashback"],
+      Hutang: ["Pinjaman Ibu", "Pinjaman Teman", "Talangan", "Utang Baru"],
       Lainnya: ["Uang Saku", "Bantuan", "Pemasukan Lain"],
     },
   },
