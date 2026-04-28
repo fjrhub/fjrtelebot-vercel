@@ -31,6 +31,24 @@ async function fetchTransactions() {
 const formatRupiah = (n) =>
   "Rp" + new Intl.NumberFormat("id-ID").format(n || 0);
 
+function getWIBDate(date = new Date()) {
+  const d = new Date(date);
+  d.setHours(d.getHours() + 7); // WIB = UTC+7
+  return d;
+}
+
+function startOfDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfDay(date) {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
 function startOfWeek(date) {
   const d = new Date(date);
   const day = d.getDay() || 7;
@@ -97,29 +115,27 @@ export default {
       return ctx.reply("📭 Belum ada data transaksi.");
     }
 
-    const now = new Date();
-    const startToday = new Date(now);
-    startToday.setHours(0, 0, 0, 0);
-    const endToday = new Date(now);
-    endToday.setHours(23, 59, 59, 999);
+    const nowWIB = getWIBDate();
+    const startToday = startOfDay(nowWIB);
+    const endToday = endOfDay(nowWIB);
 
-    const startYesterday = new Date(now);
-    startYesterday.setDate(now.getDate() - 1);
+    const startYesterday = new Date(nowWIB);
+    startYesterday.setDate(nowWIB.getDate() - 1);
     startYesterday.setHours(0, 0, 0, 0);
-    const endYesterday = new Date(now);
-    endYesterday.setDate(now.getDate() - 1);
+    const endYesterday = new Date(nowWIB);
+    endYesterday.setDate(nowWIB.getDate() - 1);
     endYesterday.setHours(23, 59, 59, 999);
 
-    const startThisWeek = startOfWeek(now);
+    const startThisWeek = startOfWeek(nowWIB);
     const startLastWeek = new Date(startThisWeek);
     startLastWeek.setDate(startThisWeek.getDate() - 7);
     const endLastWeek = new Date(startThisWeek);
     endLastWeek.setDate(startThisWeek.getDate() - 1);
     endLastWeek.setHours(23, 59, 59, 999);
 
-    const startThisMonth = startOfMonth(now);
-    const startLastMonth = new Date(now);
-    startLastMonth.setMonth(now.getMonth() - 1);
+    const startThisMonth = startOfMonth(nowWIB);
+    const startLastMonth = new Date(nowWIB);
+    startLastMonth.setMonth(nowWIB.getMonth() - 1);
     startLastMonth.setDate(1);
     startLastMonth.setHours(0, 0, 0, 0);
     const endLastMonth = endOfMonth(startLastMonth);
@@ -147,7 +163,7 @@ export default {
       `🔴 Pengeluaran : ${formatRupiah(lastMonth.keluar)}\n` +
       `💰 Profit : ${formatRupiah(lastMonth.profit)}\n\n` +
 
-      `📅 *BULAN INI (${now.toLocaleDateString("id-ID", optionsMonth)})*\n` +
+      `📅 *BULAN INI (${nowWIB.toLocaleDateString("id-ID", optionsMonth)})*\n` +
       `🟢 Pemasukan : ${formatRupiah(thisMonth.masuk)}\n` +
       `🔴 Pengeluaran : ${formatRupiah(thisMonth.keluar)}\n` +
       `💰 Profit : ${formatRupiah(thisMonth.profit)}\n\n` +
@@ -157,7 +173,7 @@ export default {
       `🔴 Pengeluaran : ${formatRupiah(lastWeek.keluar)}\n` +
       `💰 Profit : ${formatRupiah(lastWeek.profit)}\n\n` +
 
-      `📆 *MINGGU INI (${startThisWeek.toLocaleDateString("id-ID", optionsDate)} - ${now.toLocaleDateString("id-ID", optionsDate)})*\n` +
+      `📆 *MINGGU INI (${startThisWeek.toLocaleDateString("id-ID", optionsDate)} - ${nowWIB.toLocaleDateString("id-ID", optionsDate)})*\n` +
       `🟢 Pemasukan : ${formatRupiah(thisWeek.masuk)}\n` +
       `🔴 Pengeluaran : ${formatRupiah(thisWeek.keluar)}\n` +
       `💰 Profit : ${formatRupiah(thisWeek.profit)}\n\n` +
@@ -167,7 +183,7 @@ export default {
       `🔴 Pengeluaran : ${formatRupiah(yesterday.keluar)}\n` +
       `💰 Profit : ${formatRupiah(yesterday.profit)}\n\n` +
 
-      `🗓️ *HARI INI (${startToday.toLocaleDateString("id-ID", optionsDate)})*\n` +
+      `🗓️ *HARI INI (${nowWIB.toLocaleDateString("id-ID", optionsDate)})*\n` +
       `🟢 Pemasukan : ${formatRupiah(today.masuk)}\n` +
       `🔴 Pengeluaran : ${formatRupiah(today.keluar)}\n` +
       `💰 Profit : ${formatRupiah(today.profit)}`;
