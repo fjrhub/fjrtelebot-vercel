@@ -23,6 +23,27 @@ const formatRupiah = (n) => {
 };
 
 /* =========================
+   SAFE EDIT
+========================= */
+async function safeEdit(ctx, chatId, messageId, text, markup) {
+  try {
+    return await ctx.api.editMessageText(chatId, messageId, text, {
+      reply_markup: markup,
+    });
+  } catch (err) {
+    // Ignore jika message sama persis
+    if (
+      err.description?.includes("message is not modified")
+    ) {
+      return;
+    }
+
+    console.error("❌ editMessageText error:", err);
+    throw err;
+  }
+}
+
+/* =========================
    GOOGLE SHEETS
 ========================= */
 function sheetsClient() {
@@ -33,15 +54,21 @@ function sheetsClient() {
     },
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
-  return google.sheets({ version: "v4", auth });
+
+  return google.sheets({
+    version: "v4",
+    auth,
+  });
 }
 
 async function fetchAllRows() {
   const sheets = sheetsClient();
+
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: "Sheet1!F2:J",
   });
+
   return res.data.values || [];
 }
 
@@ -54,11 +81,16 @@ function getLastSaldo(rows, akun) {
       };
     }
   }
-  return { mataUang: "Rp", saldo: 0 };
+
+  return {
+    mataUang: "Rp",
+    saldo: 0,
+  };
 }
 
 async function appendRows(values) {
   const sheets = sheetsClient();
+
   await sheets.spreadsheets.values.append({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: "Sheet1!A:O",
@@ -72,37 +104,83 @@ async function appendRows(values) {
 ========================= */
 const kbList = (list, prefix, showBack = false, showCancel = false) => {
   const buttons = list.map((v) => [
-    { text: v, callback_data: `${prefix}:${v}` },
+    {
+      text: v,
+      callback_data: `${prefix}:${v}`,
+    },
   ]);
+
   const footer = [];
 
-  if (showBack)
-    footer.push({ text: "⬅️ Back", callback_data: "sellpulsa:back" });
-  if (showCancel)
-    footer.push({ text: "❌ Cancel", callback_data: "sellpulsa:cancel" });
+  if (showBack) {
+    footer.push({
+      text: "⬅️ Back",
+      callback_data: "sellpulsa:back",
+    });
+  }
 
-  if (footer.length > 0) buttons.push(footer);
-  return { inline_keyboard: buttons };
+  if (showCancel) {
+    footer.push({
+      text: "❌ Cancel",
+      callback_data: "sellpulsa:cancel",
+    });
+  }
+
+  if (footer.length > 0) {
+    buttons.push(footer);
+  }
+
+  return {
+    inline_keyboard: buttons,
+  };
 };
 
 const kbText = (showBack = false) => {
   if (showBack) {
     return {
-      inline_keyboard: [[{ text: "⬅️ Back", callback_data: "sellpulsa:back" }]],
+      inline_keyboard: [
+        [
+          {
+            text: "⬅️ Back",
+            callback_data: "sellpulsa:back",
+          },
+        ],
+      ],
     };
   }
+
   return {
     inline_keyboard: [
-      [{ text: "❌ Cancel", callback_data: "sellpulsa:cancel" }],
+      [
+        {
+          text: "❌ Cancel",
+          callback_data: "sellpulsa:cancel",
+        },
+      ],
     ],
   };
 };
 
 const kbConfirm = () => ({
   inline_keyboard: [
-    [{ text: "✅ Simpan", callback_data: "sellpulsa:save:ok" }],
-    [{ text: "⬅️ Back", callback_data: "sellpulsa:back" }],
-    [{ text: "❌ Cancel", callback_data: "sellpulsa:cancel" }],
+    [
+      {
+        text: "✅ Simpan",
+        callback_data: "sellpulsa:save:ok",
+      },
+    ],
+    [
+      {
+        text: "⬅️ Back",
+        callback_data: "sellpulsa:back",
+      },
+    ],
+    [
+      {
+        text: "❌ Cancel",
+        callback_data: "sellpulsa:cancel",
+      },
+    ],
   ],
 });
 
@@ -113,13 +191,21 @@ export default {
   name: "sellpulsa",
 
   async execute(ctx) {
-    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) {
+      return;
+    }
 
     const rows = await fetchAllRows();
+
     const msg = await ctx.reply(
       "🔁 Jual Pulsa / Top-up\n\nPilih akun penerima pembayaran:",
       {
-        reply_markup: kbList(OPTIONS.akun, "sellpulsa:akunMasuk", false, true),
+        reply_markup: kbList(
+          OPTIONS.akun,
+          "sellpulsa:akunMasuk",
+          false,
+          true,
+        ),
       },
     );
 
@@ -135,56 +221,80 @@ export default {
   async handleCallback(ctx) {
     await ctx.answerCallbackQuery().catch(() => {});
 
-    if (!ctx.callbackQuery?.data?.startsWith("sellpulsa:")) return;
+    if (!ctx.callbackQuery?.data?.startsWith("sellpulsa:")) {
+      return;
+    }
 
     const state = states.get(ctx.from.id);
-    if (!state) return;
+
+    if (!state) {
+      return;
+    }
 
     const edit = (text, markup) =>
-      ctx.api.editMessageText(state.chatId, state.messageId, text, {
-        reply_markup: markup,
-      });
+      safeEdit(
+        ctx,
+        state.chatId,
+        state.messageId,
+        text,
+        markup,
+      );
 
     const data = ctx.callbackQuery.data;
 
     if (data === "sellpulsa:cancel") {
       states.delete(ctx.from.id);
+
       return edit("❌ Transaksi dibatalkan.");
     }
 
     if (data === "sellpulsa:back") {
       state.step = state.history.pop() || "akunMasuk";
+
       return this.render(ctx, state);
     }
 
     const [, step, value] = data.split(":");
+
     state.history.push(state.step);
 
     if (step === "akunMasuk") {
       state.akunMasuk = value;
       state.step = "akunKeluar";
+
       return this.render(ctx, state);
     }
 
     if (step === "akunKeluar") {
       state.akunKeluar = value;
       state.step = "deskripsi";
+
       return this.render(ctx, state);
     }
 
     if (step === "save") {
       const now = new Date().toISOString();
 
-      // ❌ BLOCK kalau akun sama
       if (state.akunMasuk === state.akunKeluar) {
-        return edit("❌ Akun masuk dan keluar tidak boleh sama.");
+        return edit(
+          "❌ Akun masuk dan keluar tidak boleh sama.",
+        );
       }
 
-      const akunMasukInfo = getLastSaldo(state.rows, state.akunMasuk);
-      const akunKeluarInfo = getLastSaldo(state.rows, state.akunKeluar);
+      const akunMasukInfo = getLastSaldo(
+        state.rows,
+        state.akunMasuk,
+      );
+
+      const akunKeluarInfo = getLastSaldo(
+        state.rows,
+        state.akunKeluar,
+      );
 
       if (akunKeluarInfo.saldo < state.jumlahKeluar) {
-        return edit("❌ Saldo dompet tidak mencukupi untuk transaksi ini.");
+        return edit(
+          "❌ Saldo dompet tidak mencukupi untuk transaksi ini.",
+        );
       }
 
       const entries = [
@@ -224,16 +334,14 @@ export default {
 
       await appendRows(entries);
 
-      const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
+      const keuntungan =
+        state.jumlahMasuk - state.jumlahKeluar;
 
       let warning = "";
 
       if (keuntungan < 0) {
-        warning += "\n⚠️ Transaksi ini rugi (kemungkinan input ketuker)";
-      }
-
-      if (state.akunMasuk === state.akunKeluar) {
-        warning += "\n⚠️ Akun masuk dan keluar sama";
+        warning +=
+          "\n⚠️ Transaksi ini rugi (kemungkinan input ketuker)";
       }
 
       const successText = `✅ Transaksi jual pulsa berhasil disimpan!
@@ -251,15 +359,20 @@ Tag: ${state.tag}
 Catatan: ${state.catatan}${warning}`;
 
       states.delete(ctx.from.id);
+
       return edit(successText);
     }
   },
 
   async handleText(ctx) {
     const state = states.get(ctx.from.id);
-    if (!state) return;
+
+    if (!state) {
+      return;
+    }
 
     await ctx.deleteMessage().catch(() => {});
+
     state.history.push(state.step);
 
     if (state.step === "deskripsi") {
@@ -284,49 +397,81 @@ Catatan: ${state.catatan}${warning}`;
 
   async render(ctx, state) {
     const edit = (text, markup) =>
-      ctx.api.editMessageText(state.chatId, state.messageId, text, {
-        reply_markup: markup,
-      });
+      safeEdit(
+        ctx,
+        state.chatId,
+        state.messageId,
+        text,
+        markup,
+      );
 
     switch (state.step) {
       case "akunMasuk":
         return edit(
           "🔁 Jual Pulsa / Top-up\n\nPilih akun penerima pembayaran:",
-          kbList(OPTIONS.akun, "sellpulsa:akunMasuk", false, true),
+          kbList(
+            OPTIONS.akun,
+            "sellpulsa:akunMasuk",
+            false,
+            true,
+          ),
         );
 
       case "akunKeluar":
         return edit(
           "Pilih akun pengeluaran (dompet pulsa):",
-          kbList(OPTIONS.akun, "sellpulsa:akunKeluar", true, false),
+          kbList(
+            OPTIONS.akun,
+            "sellpulsa:akunKeluar",
+            true,
+            false,
+          ),
         );
 
       case "deskripsi":
-        return edit("Masukkan deskripsi transaksi:", kbText(true));
+        return edit(
+          "Masukkan deskripsi transaksi:",
+          kbText(true),
+        );
 
       case "jumlahMasuk":
-        return edit("Masukkan jumlah DITERIMA dari pembeli:", kbText(true));
+        return edit(
+          "Masukkan jumlah DITERIMA dari pembeli:",
+          kbText(true),
+        );
 
       case "jumlahKeluar":
-        return edit("Masukkan jumlah DIBERIKAN ke pembeli:", kbText(true));
+        return edit(
+          "Masukkan jumlah DIBERIKAN ke pembeli:",
+          kbText(true),
+        );
 
       case "tag":
-        return edit("Masukkan tag:", kbText(true));
+        return edit(
+          "Masukkan tag:",
+          kbText(true),
+        );
 
       case "catatan":
-        return edit("Masukkan catatan:", kbText(true));
+        return edit(
+          "Masukkan catatan:",
+          kbText(true),
+        );
 
       case "confirm": {
-        const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
+        const keuntungan =
+          state.jumlahMasuk - state.jumlahKeluar;
 
         let warning = "";
 
         if (keuntungan < 0) {
-          warning += "\n⚠️ Kayaknya jumlahnya ketuker (rugi). Coba cek lagi!";
+          warning +=
+            "\n⚠️ Kayaknya jumlahnya ketuker (rugi). Coba cek lagi!";
         }
 
         if (state.akunMasuk === state.akunKeluar) {
-          warning += "\n⚠️ Akun masuk dan keluar sama! Ini tidak masuk akal.";
+          warning +=
+            "\n⚠️ Akun masuk dan keluar sama!";
         }
 
         const confirmText = `🧾 KONFIRMASI JUAL PULSA
