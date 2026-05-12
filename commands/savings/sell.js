@@ -54,7 +54,7 @@ function parseSellText(text) {
   }
 
   return {
-    jumlahMasuk: Math.round(amount),
+    nominal: Math.round(amount),
     tag: `#${firstWord}`,
   };
 }
@@ -481,22 +481,45 @@ Catatan: ${state.catatan}${warning}`;
         return this.renderError(
           ctx,
           state,
-          "❌ Format salah.\n\nContoh:\nDana 18K",
+          "❌ Format salah.\n\nContoh:\nDana 20K",
         );
       }
 
-      state.jumlahMasuk =
-        parsed.jumlahMasuk;
-
       state.tag = parsed.tag;
-
       state.catatan = "-";
 
-      state.step = "jumlahKeluar";
+      // Fjlsaldo:
+      // nominal dianggap uang masuk
+      if (
+        state.akunKeluar ===
+        "Fjlsaldo"
+      ) {
+        state.jumlahMasuk =
+          parsed.nominal;
+
+        state.step = "jumlahKeluar";
+      }
+
+      // Selain Fjlsaldo:
+      // nominal dianggap modal keluar
+      else {
+        state.jumlahKeluar =
+          parsed.nominal;
+
+        state.step = "jumlahMasuk";
+      }
     } else if (
       state.step === "jumlahKeluar"
     ) {
       state.jumlahKeluar = toNumber(
+        ctx.message.text,
+      );
+
+      state.step = "confirm";
+    } else if (
+      state.step === "jumlahMasuk"
+    ) {
+      state.jumlahMasuk = toNumber(
         ctx.message.text,
       );
 
@@ -555,7 +578,7 @@ Catatan: ${state.catatan}${warning}`;
 
       case "deskripsi":
         return edit(
-          "Masukkan deskripsi.\n\nContoh:\nDana 18K",
+          "Masukkan deskripsi.\n\nContoh:\nDana 20K",
           kbText(true),
         );
 
@@ -565,6 +588,16 @@ Catatan: ${state.catatan}${warning}`;
 
 💡 Otomatis terdeteksi:
 Pembeli bayar: ${formatRupiah(state.jumlahMasuk)}
+Tag: ${state.tag}`,
+          kbText(true),
+        );
+
+      case "jumlahMasuk":
+        return edit(
+          `Masukkan jumlah DITERIMA dari pembeli.
+
+💡 Otomatis terdeteksi:
+Kamu keluarkan: ${formatRupiah(state.jumlahKeluar)}
 Tag: ${state.tag}`,
           kbText(true),
         );
