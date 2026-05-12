@@ -438,31 +438,19 @@ export default {
           "\n⚠️ Transaksi rugi.";
       }
 
-      const successText = `✅ Transaksi berhasil disimpan!
+      const successText = `✅ Transaksi jual pulsa berhasil disimpan!
 
 🧾 DETAIL:
 Deskripsi: ${state.deskripsi}
+Pembeli bayar: ${formatRupiah(state.jumlahMasuk)}
+Kamu keluarkan: ${formatRupiah(state.jumlahKeluar)}
+Keuntungan: ${formatRupiah(keuntungan)}
 
-Pembeli bayar:
-${formatRupiah(state.jumlahMasuk)}
+Akun Masuk: ${state.akunMasuk} (Cash)
+Akun Keluar: ${state.akunKeluar} (Transfer)
 
-Kamu keluarkan:
-${formatRupiah(state.jumlahKeluar)}
-
-Keuntungan:
-${formatRupiah(keuntungan)}
-
-Akun Masuk:
-${state.akunMasuk}
-
-Akun Keluar:
-${state.akunKeluar}
-
-Tag:
-${state.tag}
-
-Catatan:
-${state.catatan}${warning}`;
+Tag: ${state.tag}
+Catatan: ${state.catatan}${warning}`;
 
       states.delete(ctx.from.id);
 
@@ -493,7 +481,7 @@ ${state.catatan}${warning}`;
         return this.renderError(
           ctx,
           state,
-          "❌ Format salah.\n\nContoh:\nkuota 15k",
+          "❌ Format salah.\n\nContoh:\nDana 18K",
         );
       }
 
@@ -567,7 +555,7 @@ ${state.catatan}${warning}`;
 
       case "deskripsi":
         return edit(
-          "Masukkan deskripsi.\n\nContoh:\nkuota 15k",
+          "Masukkan deskripsi.\n\nContoh:\nDana 18K",
           kbText(true),
         );
 
@@ -604,27 +592,15 @@ Tag: ${state.tag}`,
         const confirmText = `🧾 KONFIRMASI SELL
 
 Deskripsi: ${state.deskripsi}
+Pembeli bayar: ${formatRupiah(state.jumlahMasuk)}
+Kamu keluarkan: ${formatRupiah(state.jumlahKeluar)}
+Keuntungan: ${formatRupiah(keuntungan)}
 
-Pembeli bayar:
-${formatRupiah(state.jumlahMasuk)}
+Akun Masuk: ${state.akunMasuk} (Cash)
+Akun Keluar: ${state.akunKeluar} (Transfer)
 
-Kamu keluarkan:
-${formatRupiah(state.jumlahKeluar)}
-
-Keuntungan:
-${formatRupiah(keuntungan)}
-
-Akun Masuk:
-${state.akunMasuk}
-
-Akun Keluar:
-${state.akunKeluar}
-
-Tag:
-${state.tag}
-
-Catatan:
-${state.catatan}${warning}
+Tag: ${state.tag}
+Catatan: ${state.catatan}${warning}
 
 Lanjutkan?`;
 
