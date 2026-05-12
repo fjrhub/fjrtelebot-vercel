@@ -54,7 +54,7 @@ function parseSellText(text) {
   }
 
   return {
-    jumlahKeluar: Math.round(amount),
+    jumlahMasuk: Math.round(amount),
     tag: `#${firstWord}`,
   };
 }
@@ -442,15 +442,27 @@ export default {
 
 🧾 DETAIL:
 Deskripsi: ${state.deskripsi}
-Pembeli bayar: ${formatRupiah(state.jumlahMasuk)}
-Kamu keluarkan: ${formatRupiah(state.jumlahKeluar)}
-Keuntungan: ${formatRupiah(keuntungan)}
 
-Akun Masuk: ${state.akunMasuk}
-Akun Keluar: ${state.akunKeluar}
+Pembeli bayar:
+${formatRupiah(state.jumlahMasuk)}
 
-Tag: ${state.tag}
-Catatan: ${state.catatan}${warning}`;
+Kamu keluarkan:
+${formatRupiah(state.jumlahKeluar)}
+
+Keuntungan:
+${formatRupiah(keuntungan)}
+
+Akun Masuk:
+${state.akunMasuk}
+
+Akun Keluar:
+${state.akunKeluar}
+
+Tag:
+${state.tag}
+
+Catatan:
+${state.catatan}${warning}`;
 
       states.delete(ctx.from.id);
 
@@ -481,22 +493,22 @@ Catatan: ${state.catatan}${warning}`;
         return this.renderError(
           ctx,
           state,
-          "❌ Format salah.\n\nContoh:\ndana 50k",
+          "❌ Format salah.\n\nContoh:\nkuota 15k",
         );
       }
 
-      state.jumlahKeluar =
-        parsed.jumlahKeluar;
+      state.jumlahMasuk =
+        parsed.jumlahMasuk;
 
       state.tag = parsed.tag;
 
       state.catatan = "-";
 
-      state.step = "jumlahMasuk";
+      state.step = "jumlahKeluar";
     } else if (
-      state.step === "jumlahMasuk"
+      state.step === "jumlahKeluar"
     ) {
-      state.jumlahMasuk = toNumber(
+      state.jumlahKeluar = toNumber(
         ctx.message.text,
       );
 
@@ -555,16 +567,16 @@ Catatan: ${state.catatan}${warning}`;
 
       case "deskripsi":
         return edit(
-          "Masukkan deskripsi.\n\nContoh:\ndana 50k",
+          "Masukkan deskripsi.\n\nContoh:\nkuota 15k",
           kbText(true),
         );
 
-      case "jumlahMasuk":
+      case "jumlahKeluar":
         return edit(
-          `Masukkan jumlah DITERIMA dari pembeli.
+          `Masukkan MODAL / jumlah yang keluar.
 
 💡 Otomatis terdeteksi:
-Jumlah Keluar: ${formatRupiah(state.jumlahKeluar)}
+Pembeli bayar: ${formatRupiah(state.jumlahMasuk)}
 Tag: ${state.tag}`,
           kbText(true),
         );
