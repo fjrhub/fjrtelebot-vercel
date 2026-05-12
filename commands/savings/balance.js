@@ -21,7 +21,8 @@ function sheetsClient() {
 /* =========================
    UTIL
 ========================= */
-const formatRp = (n) => "Rp " + Math.round(n).toLocaleString("id-ID");
+// ✅ Format tanpa spasi sesuai preferensi user
+const formatRp = (n) => "Rp" + Math.round(n).toLocaleString("id-ID");
 
 function parseRp(value) {
   if (!value) return 0;
@@ -96,6 +97,17 @@ const ASSET_RGB = {
 const getAssetRgb = (name) => ASSET_RGB[name] || [173, 181, 189];
 
 /* =========================
+   GOAL VIEW CONFIG
+========================= */
+const GOAL_CATEGORIES = {
+  liquid:  ["Wallet", "Dana", "Bank", "Fjlsaldo", "Gopay"],
+  trading: ["USDT", "Seabank"],
+  btcHold: ["Bitcoin"],
+};
+const GOAL_TARGET = 10_000_000;
+const TRADING_RISK_PCT = 0.02;
+
+/* =========================
    PDF GENERATOR
    returns Buffer
 ========================= */
@@ -107,11 +119,10 @@ function generatePdf(rows, timestamp) {
     doc.on("end",   ()  => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const pageW  = doc.page.width;   // 595
+    const pageW  = doc.page.width;
     const margin = 40;
-    const inner  = pageW - margin * 2; // 515
+    const inner  = pageW - margin * 2;
 
-    // ── Warna ──
     const ACCENT      = "#2563eb";
     const GREEN       = "#15803d";
     const DARK        = "#1e1e1e";
@@ -120,39 +131,29 @@ function generatePdf(rows, timestamp) {
     const GRAY_MID    = "#dee2e6";
     const WHITE       = "#ffffff";
 
-    // ─────────────────────────────────────────
-    //  HEADER BANNER
-    // ─────────────────────────────────────────
+    // HEADER
     doc.rect(0, 0, pageW, 76).fill(ACCENT);
-
     doc.fillColor(WHITE).fontSize(20).font("Helvetica-Bold")
        .text("Laporan Saldo Aset", margin, 16, { align: "center", width: inner });
-
     doc.fillColor(WHITE).fontSize(9).font("Helvetica")
        .text(`CahayaMalamBot  •  ${timestamp}`, margin, 48, { align: "center", width: inner });
 
     let y = 90;
 
-    // ─────────────────────────────────────────
-    //  HITUNG DATA
-    // ─────────────────────────────────────────
+    // HITUNG DATA
     const parsed   = rows.map(([name, raw]) => ({ name, val: parseRp(raw) }));
     const total    = parsed.reduce((s, r) => s + r.val, 0);
     const invTotal = parsed.filter(r => KATEGORI[r.name] === "Investasi").reduce((s, r) => s + r.val, 0);
     const bizTotal = parsed.filter(r => KATEGORI[r.name] === "Modal Bisnis").reduce((s, r) => s + r.val, 0);
     const emgTotal = parsed.filter(r => KATEGORI[r.name] === "Dana Darurat").reduce((s, r) => s + r.val, 0);
 
-    // ─────────────────────────────────────────
-    //  TOTAL BESAR
-    // ─────────────────────────────────────────
+    // TOTAL BESAR
     doc.roundedRect(margin, y, inner, 40, 8).fill(GRAY_LIGHT);
     doc.fillColor(GREEN).fontSize(17).font("Helvetica-Bold")
        .text(`Total Aset: ${formatRp(total)}`, margin, y + 11, { align: "center", width: inner });
     y += 52;
 
-    // ─────────────────────────────────────────
-    //  RINGKASAN KATEGORI (3 kotak)
-    // ─────────────────────────────────────────
+    // RINGKASAN KATEGORI
     doc.fillColor(ACCENT).fontSize(11).font("Helvetica-Bold").text("Ringkasan Kategori", margin, y);
     y += 16;
 
@@ -175,23 +176,18 @@ function generatePdf(rows, timestamp) {
     });
     y += 64;
 
-    // ─────────────────────────────────────────
-    //  PROGRESS BAR
-    // ─────────────────────────────────────────
+    // PROGRESS BAR
     const GOAL  = 10_000_000;
     const pct   = Math.min(total / GOAL, 1);
 
     doc.fillColor(ACCENT).fontSize(11).font("Helvetica-Bold")
-       .text("Progress Menuju Goal Rp 10.000.000", margin, y);
+       .text("Progress Menuju Goal Rp10.000.000", margin, y);
     y += 15;
 
     const barH = 22;
-    // bg
     doc.roundedRect(margin, y, inner, barH, 5).fill(GRAY_MID);
-    // fill
     const fillPx = Math.max(inner * pct, 8);
     doc.roundedRect(margin, y, fillPx, barH, 5).fill(GREEN);
-    // label dalam bar
     doc.fillColor(WHITE).fontSize(9).font("Helvetica-Bold")
        .text(`${(pct * 100).toFixed(1)}%  ${formatRp(total)}`, margin + 8, y + 6, { width: fillPx - 10 });
     y += barH + 5;
@@ -201,13 +197,10 @@ function generatePdf(rows, timestamp) {
               margin, y, { align: "right", width: inner });
     y += 18;
 
-    // ─────────────────────────────────────────
-    //  TABEL DETAIL ASET
-    // ─────────────────────────────────────────
+    // TABEL DETAIL ASET
     doc.fillColor(ACCENT).fontSize(11).font("Helvetica-Bold").text("Detail Setiap Aset", margin, y);
     y += 16;
 
-    // Kolom: No | Akun | Kategori | Saldo | Porsi | Bar
     const COL = {
       no:    { x: margin,       w: 22  },
       akun:  { x: margin + 22,  w: 110 },
@@ -240,32 +233,24 @@ function generatePdf(rows, timestamp) {
       const pctVal   = val / total;
 
       doc.rect(margin, y, inner, ROW_H).fill(rowBg);
-
-      // No
       doc.fillColor(GRAY).fontSize(8).font("Helvetica")
          .text(String(i + 1), COL.no.x + 3, y + 6, { width: COL.no.w - 4 });
-      // Akun
       doc.fillColor(DARK).font("Helvetica-Bold")
          .text(name, COL.akun.x + 3, y + 6, { width: COL.akun.w - 4 });
-      // Kategori
       doc.fillColor(GRAY).font("Helvetica")
          .text(KATEGORI[name] || "-", COL.kat.x + 3, y + 6, { width: COL.kat.w - 4 });
-      // Saldo (kanan)
       doc.fillColor(DARK).font("Helvetica-Bold")
          .text(formatRp(val), COL.saldo.x + 3, y + 6, { width: COL.saldo.w - 6, align: "right" });
-      // Porsi
       doc.fillColor(GRAY).font("Helvetica")
          .text(`${(pctVal * 100).toFixed(1)}%`, COL.porsi.x + 2, y + 6, { width: COL.porsi.w - 4, align: "right" });
-      // Mini bar
+
       const barInner = COL.bar.w - 10;
       doc.rect(COL.bar.x + 4, y + 6, barInner, 8).fill(GRAY_MID);
       doc.rect(COL.bar.x + 4, y + 6, Math.max(barInner * pctVal, 2), 8)
          .fill(`rgb(${r},${g},${b})`);
 
-      // Divider
       doc.moveTo(margin, y + ROW_H).lineTo(margin + inner, y + ROW_H)
          .strokeColor(GRAY_MID).lineWidth(0.3).stroke();
-
       y += ROW_H;
     });
 
@@ -278,9 +263,7 @@ function generatePdf(rows, timestamp) {
 
     y += ROW_H + 20;
 
-    // ─────────────────────────────────────────
-    //  FOOTER
-    // ─────────────────────────────────────────
+    // FOOTER
     doc.moveTo(margin, y).lineTo(margin + inner, y)
        .strokeColor(GRAY_MID).lineWidth(0.6).stroke();
     y += 8;
@@ -311,6 +294,7 @@ export default {
     const text  = ctx.message?.text || "";
     const isPdf = text.includes("-pdf");
     const isAll = isPdf || text.includes("-a");
+    const isGoal = text.includes("-goal");
 
     const rows = isAll
       ? await getAccountsFormatted()
@@ -321,11 +305,54 @@ export default {
     const timestamp = getJakartaTime();
     let totalRp = 0;
 
-    const accountMessages = rows.map(([akun, rawSaldo]) => {
+    // Parse semua data
+    const parsed = rows.map(([akun, rawSaldo]) => {
       const saldo = isAll ? parseRp(rawSaldo) : (Number(rawSaldo) || 0);
       totalRp += saldo;
-      return `🧾 Account : ${akun}\n💰 Balance: ${formatRp(saldo)}`;
+      return { akun, saldo };
     });
+
+    // ─────────────────────────────────────────
+    // 🎯 GOAL VIEW MODE
+    // ─────────────────────────────────────────
+    if (isGoal) {
+      const remaining = Math.max(0, GOAL_TARGET - totalRp);
+      const trend = totalRp >= GOAL_TARGET ? "✅" : "▲";
+      
+      let liquid = 0, trading = 0, btcHoldVal = 0;
+      
+      parsed.forEach(({ akun, saldo }) => {
+        if (GOAL_CATEGORIES.liquid.includes(akun)) {
+          liquid += saldo;
+        } else if (GOAL_CATEGORIES.trading.includes(akun)) {
+          trading += saldo;
+        } else if (GOAL_CATEGORIES.btcHold.includes(akun)) {
+          btcHoldVal += saldo;
+        }
+      });
+
+      const riskAmount = Math.round(trading * TRADING_RISK_PCT);
+      const dateOnly = timestamp.split(" ")[0];
+
+      const goalMessage = `
+🎯 10 JUTA PERTAMA
+Total: ${formatRp(totalRp)} ${trend}
+├─ 💧 Liquid: ${formatRp(liquid)} 🔄
+├─ 🎮 Trading: ${formatRp(trading)} (Risk: ${formatRp(riskAmount)})
+└─ 🪙 BTC Hold: ${formatRp(btcHoldVal)} ▬
+
+📅 ${dateOnly} | Sisa: ${formatRp(remaining)}
+`.trim();
+
+      return ctx.reply(goalMessage);
+    }
+
+    // ─────────────────────────────────────────
+    // 📋 DEFAULT VIEW
+    // ─────────────────────────────────────────
+    const accountMessages = parsed.map(({ akun, saldo }) => 
+      `🧾 Account : ${akun}\n💰 Balance: ${formatRp(saldo)}`
+    );
 
     const textMessage = `
 📊 Account Balances
@@ -338,7 +365,6 @@ ${accountMessages.join("\n\n")}
 `.trim();
 
     if (isPdf) {
-      // Kirim PDF sebagai dokumen
       const pdfBuffer = await generatePdf(rows, timestamp);
       await ctx.replyWithDocument(
         new InputFile(pdfBuffer, `balance_${Date.now()}.pdf`),
