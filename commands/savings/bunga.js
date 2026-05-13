@@ -37,6 +37,23 @@ const sheetToAmount = (value, currency) => {
 };
 
 /* =========================
+   SAFE EDIT
+========================= */
+async function safeEdit(ctx, chatId, messageId, text, markup) {
+  try {
+    return await ctx.api.editMessageText(chatId, messageId, text, {
+      reply_markup: markup,
+    });
+  } catch (err) {
+    if (err.description?.includes("message is not modified")) {
+      return;
+    }
+    console.error("❌ editMessageText error:", err);
+    throw err;
+  }
+}
+
+/* =========================
    GOOGLE SHEETS
 ========================= */
 function sheetsClient() {
@@ -104,6 +121,32 @@ async function appendTransaction(data) {
 }
 
 /* =========================
+   KEYBOARD
+========================= */
+const kbText = (showBack = false) => {
+  if (showBack) {
+    return {
+      inline_keyboard: [
+        [{ text: "⬅️ Back", callback_data: "bunga:back" }],
+      ],
+    };
+  }
+  return {
+    inline_keyboard: [
+      [{ text: "❌ Cancel", callback_data: "bunga:cancel" }],
+    ],
+  };
+};
+
+const kbConfirm = () => ({
+  inline_keyboard: [
+    [{ text: "✅ Simpan", callback_data: "bunga:save:ok" }],
+    [{ text: "⬅️ Back", callback_data: "bunga:back" }],
+    [{ text: "❌ Cancel", callback_data: "bunga:cancel" }],
+  ],
+});
+
+/* =========================
    COMMAND
 ========================= */
 export default {
@@ -115,13 +158,12 @@ export default {
     const rows = await fetchAllRows();
 
     const msg = await ctx.reply("Masukkan deskripsi bunga:", {
-      reply_markup: {
-        inline_keyboard: [[{ text: "❌ Cancel", callback_data: "bunga:cancel" }]],
-      },
+      reply_markup: kbText(false),
     });
 
     states.set(ctx.from.id, {
       step: "deskripsi",
+      history: [],
       rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
@@ -138,16 +180,44 @@ export default {
   },
 
   async handleCallback(ctx) {
+    await ctx.answerCallbackQuery().catch(() => {});
+
     const state = states.get(ctx.from.id);
     if (!state) return;
 
-    if (ctx.callbackQuery.data === "bunga:cancel") {
+    const data = ctx.callbackQuery?.data;
+    if (!data?.startsWith("bunga:")) return;
+
+    const edit = (text, markup) =>
+      safeEdit(ctx, state.chatId, state.messageId, text, markup);
+
+    if (data === "bunga:cancel") {
       states.delete(ctx.from.id);
-      return ctx.api.editMessageText(
-        state.chatId,
-        state.messageId,
-        "❌ Dibatalkan.",
-      );
+      return edit("❌ Dibatalkan.");
+    }
+
+    if (data === "bunga:back") {
+      state.step = state.history.pop() || "deskripsi";
+      return this.render(ctx, state);
+    }
+
+    if (data === "bunga:save:ok") {
+      await appendTransaction(state);
+      states.delete(ctx.from.id);
+
+      const successText = `✅ Transaksi berhasil disimpan!\n\n` +
+        `Jenis: ${state.jenis}\n` +
+        `Kategori: ${state.kategori}\n` +
+        `Sub: ${state.subKategori}\n` +
+        `Deskripsi: ${state.deskripsi}\n` +
+        `Jumlah: ${formatAmount(state.jumlah, state.mataUang)}\n` +
+        `Akun: ${state.akun}\n` +
+        `Metode: ${state.metode}\n` +
+        `Tag: ${state.tag}\n` +
+        `Saldo Sebelum: ${formatAmount(state.saldoSebelum, state.mataUang)}\n` +
+        `Saldo Sesudah: ${formatAmount(state.saldoSesudah, state.mataUang)}`;
+
+      return edit(successText);
     }
   },
 
@@ -156,6 +226,7 @@ export default {
     if (!state) return;
 
     await ctx.deleteMessage().catch(() => {});
+    state.history.push(state.step);
 
     if (state.step === "deskripsi") {
       state.deskripsi = ctx.message.text;
@@ -165,6 +236,7 @@ export default {
         state.chatId,
         state.messageId,
         "Masukkan jumlah:",
+        { reply_markup: kbText(true) },
       );
     }
 
@@ -180,22 +252,49 @@ export default {
       state.mataUang = mataUang;
       state.saldoSesudah = saldo + state.jumlah;
 
-      await appendTransaction(state);
-      states.delete(ctx.from.id);
+      state.step = "confirm";
+      return this.render(ctx, state);
+    }
+  },
 
-      return ctx.api.editMessageText(
-        state.chatId,
-        state.messageId,
-        `✅ Transaksi berhasil disimpan!\n\n` +
-          `Jenis: ${state.jenis}\n` +
-          `Kategori: ${state.kategori}\n` +
-          `Sub: ${state.subKategori}\n` +
-          `Deskripsi: ${state.deskripsi}\n` +
-          `Jumlah: ${formatAmount(state.jumlah, state.mataUang)}\n` +
-          `Akun: ${state.akun}\n` +
-          `Metode: ${state.metode}\n` +
-          `Tag: ${state.tag}`,
-      );
+  async render(ctx, state) {
+    const edit = (text, markup) =>
+      safeEdit(ctx, state.chatId, state.messageId, text, markup);
+
+    switch (state.step) {
+      case "deskripsi":
+        return edit("Masukkan deskripsi bunga:", kbText(false));
+
+      case "jumlah":
+        return edit(
+          `Masukkan jumlah:\n\n💡 Otomatis:\nAkun: ${state.akun}\nTag: ${state.tag}`,
+          kbText(true),
+        );
+
+      case "confirm": {
+        const confirmText = `🧾 KONFIRMASI BUNGA
+
+Jenis: ${state.jenis}
+Kategori: ${state.kategori}
+Sub: ${state.subKategori}
+Deskripsi: ${state.deskripsi}
+Jumlah: ${formatAmount(state.jumlah, state.mataUang)}
+
+Akun: ${state.akun}
+Metode: ${state.metode}
+Tag: ${state.tag}
+Catatan: ${state.catatan}
+
+Saldo Sebelum: ${formatAmount(state.saldoSebelum, state.mataUang)}
+Saldo Sesudah: ${formatAmount(state.saldoSesudah, state.mataUang)}
+
+Lanjutkan?`;
+
+        return edit(confirmText, kbConfirm());
+      }
+
+      default:
+        return edit("⚠️ Langkah tidak dikenal.", kbText(true));
     }
   },
 };
