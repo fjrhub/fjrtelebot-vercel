@@ -10,7 +10,7 @@ export default {
       // jika hanya /img tanpa link
       if (!args.length) {
         return await ctx.reply(
-          "⚠️ Gunakan format:\n/img https://link-gambar.com/image.png\n\nContoh link Discord CDN juga bisa."
+          "⚠️ Gunakan format:\n/img https://media.discordapp.net/attachments/...\n\nHanya mendukung URL dari Discord CDN."
         );
       }
 
@@ -21,6 +21,21 @@ export default {
         new URL(url);
       } catch {
         return await ctx.reply("❌ Link tidak valid.");
+      }
+
+      // validasi hanya Discord CDN
+      const allowedHosts = [
+        "media.discordapp.net",
+        "cdn.discordapp.com",
+        "images-ext-1.discordapp.net",
+        "images-ext-2.discordapp.net",
+      ];
+
+      const parsedUrl = new URL(url);
+      if (!allowedHosts.includes(parsedUrl.hostname)) {
+        return await ctx.reply(
+          "❌ Hanya URL dari Discord CDN yang didukung.\n\nContoh:\nhttps://media.discordapp.net/attachments/..."
+        );
       }
 
       // ambil gambar
