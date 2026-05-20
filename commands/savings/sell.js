@@ -3,18 +3,23 @@ import { google } from "googleapis";
 /* =========================
    OPTIONS
 ========================= */
+
 const OPTIONS = {
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Fjlsaldo", "Gopay"],
 };
 
+const TOKEN_FEE = 3000;
+
 /* =========================
    STATE
 ========================= */
+
 const states = new Map();
 
 /* =========================
    UTIL
 ========================= */
+
 const toNumber = (v) =>
   Number(String(v).replace(/\./g, "").replace(",", "."));
 
@@ -62,6 +67,7 @@ function parseSellText(text) {
 /* =========================
    SAFE EDIT
 ========================= */
+
 async function safeEdit(
   ctx,
   chatId,
@@ -99,17 +105,20 @@ async function safeEdit(
 /* =========================
    GOOGLE SHEETS
 ========================= */
+
 function sheetsClient() {
   const auth = new google.auth.GoogleAuth({
     credentials: {
       client_email:
         process.env.GOOGLE_CLIENT_EMAIL,
+
       private_key:
         process.env.GOOGLE_PRIVATE_KEY.replace(
           /\\n/g,
           "\n",
         ),
     },
+
     scopes: [
       "https://www.googleapis.com/auth/spreadsheets",
     ],
@@ -128,6 +137,7 @@ async function fetchAllRows() {
     await sheets.spreadsheets.values.get({
       spreadsheetId:
         process.env.SPREADSHEET_ID,
+
       range: "Sheet1!F2:J",
     });
 
@@ -156,8 +166,11 @@ async function appendRows(values) {
   await sheets.spreadsheets.values.append({
     spreadsheetId:
       process.env.SPREADSHEET_ID,
+
     range: "Sheet1!A:O",
+
     valueInputOption: "USER_ENTERED",
+
     requestBody: { values },
   });
 }
@@ -165,6 +178,7 @@ async function appendRows(values) {
 /* =========================
    KEYBOARD
 ========================= */
+
 const kbList = (
   list,
   prefix,
@@ -255,6 +269,7 @@ const kbConfirm = () => ({
 /* =========================
    COMMAND
 ========================= */
+
 export default {
   name: "sell",
 
@@ -488,8 +503,10 @@ Catatan: ${state.catatan}${warning}`;
       state.tag = parsed.tag;
       state.catatan = "-";
 
-      // Fjlsaldo:
-      // nominal dianggap uang masuk
+      const isToken =
+        /token/i.test(state.deskripsi);
+
+      // Fjlsaldo
       if (
         state.akunKeluar ===
         "Fjlsaldo"
@@ -500,8 +517,20 @@ Catatan: ${state.catatan}${warning}`;
         state.step = "jumlahKeluar";
       }
 
-      // Selain Fjlsaldo:
-      // nominal dianggap modal keluar
+      // Seabank + token
+      else if (
+        state.akunKeluar ===
+          "Seabank" &&
+        isToken
+      ) {
+        state.jumlahMasuk =
+          parsed.nominal +
+          TOKEN_FEE;
+
+        state.step = "jumlahKeluar";
+      }
+
+      // Normal
       else {
         state.jumlahKeluar =
           parsed.nominal;
