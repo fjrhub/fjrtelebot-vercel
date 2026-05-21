@@ -101,10 +101,23 @@ Format:
       // selisih
       const difference = walletBalance - totalCash;
 
-      const hasil = `
-💰 Cash  : ${formatRp(totalCash)}
-🏦 Wallet: ${formatRp(walletBalance)}
-📊 Selisih: ${difference >= 0 ? "+" : "-"}${formatRp(Math.abs(difference))}
+const hasil = `
+<b>💸 CASH CHECK</b>
+
+💵 100K × ${numbers[0]} = <code>${formatRp(100000 * numbers[0])}</code>
+💴 50K × ${numbers[1]} = <code>${formatRp(50000 * numbers[1])}</code>
+💶 20K × ${numbers[2]} = <code>${formatRp(20000 * numbers[2])}</code>
+🧾 10K × ${numbers[3]} = <code>${formatRp(10000 * numbers[3])}</code>
+📘 5K × ${numbers[4]} = <code>${formatRp(5000 * numbers[4])}</code>
+📗 2K × ${numbers[5]} = <code>${formatRp(2000 * numbers[5])}</code>
+📕 1K × ${numbers[6]} = <code>${formatRp(1000 * numbers[6])}</code>
+🪙 500 × ${numbers[7]} = <code>${formatRp(500 * numbers[7])}</code>
+
+━━━━━━━━━━━━━━
+
+💰 Cash   : <code>${formatRp(totalCash)}</code>
+🏦 Wallet : <code>${formatRp(walletBalance)}</code>
+📊 Selisih: <code>${difference >= 0 ? "+" : "-"}${formatRp(Math.abs(difference))}</code>
 
 ${
   difference > 0
@@ -115,9 +128,9 @@ ${
 }
 `.trim();
 
-      await ctx.reply(hasil, {
-        parse_mode: "HTML",
-      });
+await ctx.reply(hasil, {
+  parse_mode: "HTML",
+});
     } catch (err) {
       console.error(err);
       await ctx.reply("Terjadi error saat menghitung uang.");
