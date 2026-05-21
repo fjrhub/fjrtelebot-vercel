@@ -84,21 +84,10 @@ Format:
         .filter((v) => !isNaN(v));
 
       if (numbers.length !== 8) {
-        return ctx.reply(
-          "Harus memasukkan 8 angka sesuai urutan pecahan.",
-        );
+        return ctx.reply("Harus memasukkan 8 angka sesuai urutan pecahan.");
       }
 
-      const pecahan = [
-        100000,
-        50000,
-        20000,
-        10000,
-        5000,
-        2000,
-        1000,
-        500,
-      ];
+      const pecahan = [100000, 50000, 20000, 10000, 5000, 2000, 1000, 500];
 
       let totalCash = 0;
 
@@ -113,24 +102,40 @@ Format:
       const difference = walletBalance - totalCash;
 
       const hasil = `
-💵 Cash Counter
+💸 DETAIL PECAHAN
 
-100.000 : ${numbers[0]}
-50.000  : ${numbers[1]}
-20.000  : ${numbers[2]}
-10.000  : ${numbers[3]}
-5.000   : ${numbers[4]}
-2.000   : ${numbers[5]}
-1.000   : ${numbers[6]}
-500     : ${numbers[7]}
+💵 100K × ${numbers[0]}  = ${formatRp(100000 * numbers[0])}
+💴  50K × ${numbers[1]}  = ${formatRp(50000 * numbers[1])}
+💶  20K × ${numbers[2]}  = ${formatRp(20000 * numbers[2])}
+🧾  10K × ${numbers[3]}  = ${formatRp(10000 * numbers[3])}
+📘   5K × ${numbers[4]}  = ${formatRp(5000 * numbers[4])}
+📗   2K × ${numbers[5]}  = ${formatRp(2000 * numbers[5])}
+📕   1K × ${numbers[6]}  = ${formatRp(1000 * numbers[6])}
+🪙 500 × ${numbers[7]}   = ${formatRp(500 * numbers[7])}
 
 ━━━━━━━━━━━━━━━━━━
-💰 Cash      : ${formatRp(totalCash)}
-🏦 Wallet    : ${formatRp(walletBalance)}
-📊 Selisih   : ${formatRp(difference)}
+💰 CASH FISIK
+${formatRp(totalCash)}
+
+🏦 WALLET
+${formatRp(walletBalance)}
+
+📊 SELISIH
+${difference >= 0 ? "+" : "-"} ${formatRp(Math.abs(difference))}
+
+📈 STATUS
+${
+  difference > 0
+    ? "⚠️ Wallet lebih besar dari cash fisik"
+    : difference < 0
+      ? "⚠️ Cash fisik lebih besar dari wallet"
+      : "✅ Cash fisik sesuai wallet"
+}
 `.trim();
 
-      await ctx.reply(hasil);
+      await ctx.reply(hasil, {
+        parse_mode: "Markdown",
+      });
     } catch (err) {
       console.error(err);
       await ctx.reply("Terjadi error saat menghitung uang.");
