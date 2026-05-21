@@ -102,39 +102,21 @@ Format:
       const difference = walletBalance - totalCash;
 
       const hasil = `
-💸 DETAIL PECAHAN
+💰 Cash  : ${formatRp(totalCash)}
+🏦 Wallet: ${formatRp(walletBalance)}
+📊 Selisih: ${difference >= 0 ? "+" : "-"}${formatRp(Math.abs(difference))}
 
-💵 100K × ${numbers[0]}  = ${formatRp(100000 * numbers[0])}
-💴  50K × ${numbers[1]}  = ${formatRp(50000 * numbers[1])}
-💶  20K × ${numbers[2]}  = ${formatRp(20000 * numbers[2])}
-🧾  10K × ${numbers[3]}  = ${formatRp(10000 * numbers[3])}
-📘   5K × ${numbers[4]}  = ${formatRp(5000 * numbers[4])}
-📗   2K × ${numbers[5]}  = ${formatRp(2000 * numbers[5])}
-📕   1K × ${numbers[6]}  = ${formatRp(1000 * numbers[6])}
-🪙 500 × ${numbers[7]}   = ${formatRp(500 * numbers[7])}
-
-━━━━━━━━━━━━━━━━━━
-💰 CASH FISIK
-${formatRp(totalCash)}
-
-🏦 WALLET
-${formatRp(walletBalance)}
-
-📊 SELISIH
-${difference >= 0 ? "+" : "-"} ${formatRp(Math.abs(difference))}
-
-📈 STATUS
 ${
   difference > 0
-    ? "⚠️ Wallet lebih besar dari cash fisik"
+    ? "⚠️ Wallet lebih besar"
     : difference < 0
-      ? "⚠️ Cash fisik lebih besar dari wallet"
-      : "✅ Cash fisik sesuai wallet"
+      ? "⚠️ Cash lebih besar"
+      : "✅ Balance sesuai"
 }
 `.trim();
 
       await ctx.reply(hasil, {
-        parse_mode: "Markdown",
+        parse_mode: "HTML",
       });
     } catch (err) {
       console.error(err);
