@@ -157,12 +157,12 @@ export default {
 
     const rows = await fetchAllRows();
 
-    const msg = await ctx.reply("Masukkan deskripsi bunga:", {
+    const msg = await ctx.reply("Masukkan jumlah:", {
       reply_markup: kbText(false),
     });
 
     states.set(ctx.from.id, {
-      step: "deskripsi",
+      step: "jumlah", // 🔥 Langsung ke step jumlah
       history: [],
       rows,
       chatId: ctx.chat.id,
@@ -172,6 +172,7 @@ export default {
       jenis: "Pemasukan",
       kategori: "Investasi",
       subKategori: "Bunga Bank",
+      deskripsi: "Bunga Seabank",
       akun: "Seabank",
       metode: "Transfer",
       tag: "#bunga",
@@ -197,8 +198,14 @@ export default {
     }
 
     if (data === "bunga:back") {
-      state.step = state.history.pop() || "deskripsi";
-      return this.render(ctx, state);
+      // 🔥 Karena step awal sekarang "jumlah", back hanya valid jika history ada
+      if (state.history.length > 0) {
+        state.step = state.history.pop();
+        return this.render(ctx, state);
+      }
+      // Jika di step jumlah dan back ditekan, anggap sebagai cancel
+      states.delete(ctx.from.id);
+      return edit("❌ Dibatalkan.");
     }
 
     if (data === "bunga:save:ok") {
@@ -228,18 +235,7 @@ export default {
     await ctx.deleteMessage().catch(() => {});
     state.history.push(state.step);
 
-    if (state.step === "deskripsi") {
-      state.deskripsi = ctx.message.text;
-      state.step = "jumlah";
-
-      return ctx.api.editMessageText(
-        state.chatId,
-        state.messageId,
-        "Masukkan jumlah:",
-        { reply_markup: kbText(true) },
-      );
-    }
-
+    // 🔥 Step "deskripsi" dihapus, langsung handle "jumlah"
     if (state.step === "jumlah") {
       state.jumlah = parseInputAmount(ctx.message.text);
 
@@ -262,12 +258,10 @@ export default {
       safeEdit(ctx, state.chatId, state.messageId, text, markup);
 
     switch (state.step) {
-      case "deskripsi":
-        return edit("Masukkan deskripsi bunga:", kbText(false));
-
+      // 🔥 Case "deskripsi" dihapus
       case "jumlah":
         return edit(
-          `Masukkan jumlah:\n\n💡 Otomatis:\nAkun: ${state.akun}\nTag: ${state.tag}`,
+          `Masukkan jumlah:\n\n💡 Otomatis:\nDeskripsi: ${state.deskripsi}\nAkun: ${state.akun}\nTag: ${state.tag}`,
           kbText(true),
         );
 
