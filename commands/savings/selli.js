@@ -139,7 +139,7 @@ export default {
     const saldoMasukSesudah = saldoMasukSebelum + jumlahMasuk;
     const keuntungan = jumlahMasuk - jumlahKeluar;
 
-    // 🔥 Format simple sesuai request
+    // 🔥 Format sesuai request
     const deskripsi = `${akunKeluar} ${keluarRaw}`;
     const tag = `#${akunKeluar.toLowerCase()}`;
     const catatan = "-";
@@ -218,8 +218,27 @@ Tag: ${tag} | Catatan: ${catatan}`,
       await appendRows(entries);
       states.delete(ctx.from.id);
 
-      const warning = state.jumlahMasuk - state.jumlahKeluar < 0 ? "\n⚠️ Transaksi rugi." : "";
-      return edit(`✅ Transaksi berhasil disimpan!${warning}\n\n🧾 ${state.deskripsi}\n💸 Keluar: ${formatRupiah(state.jumlahKeluar)}\n💰 Masuk: ${formatRupiah(state.jumlahMasuk)}`);
+      const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
+      const warning = keuntungan < 0 ? "\n⚠️ Transaksi rugi." : "";
+
+      const saldoLines = [
+        formatSaldoLine(state.akunKeluar, state.saldoKeluarSebelum, state.saldoKeluarSesudah, true),
+        formatSaldoLine(state.akunMasuk, state.saldoMasukSebelum, state.saldoMasukSesudah, false),
+      ].join("\n");
+
+      const successText = `✅ Transaksi berhasil disimpan!
+
+🧾 DETAIL:
+📝 Deskripsi: ${state.deskripsi}
+💸 Keluar: ${formatRupiah(state.jumlahKeluar)} dari ${state.akunKeluar}
+💰 Masuk: ${formatRupiah(state.jumlahMasuk)} ke ${state.akunMasuk}
+📈 Keuntungan: ${formatRupiah(keuntungan)}
+
+${saldoLines}
+
+Tag: ${state.tag} | Catatan: ${state.catatan}${warning}`;
+
+      return edit(successText);
     }
   },
 };
