@@ -328,25 +328,15 @@ Catatan: ${state.catatan}${warning}`;
       state.tag = parsed.tag;
       state.catatan = "-";
 
-      const descLower = state.deskripsi.toLowerCase();
-      const isToken = /token/i.test(descLower);
-      const isTarik = /tarik/i.test(descLower);
+      const isToken = /token/i.test(state.deskripsi);
 
-      // 🎯 LOGIKA BARU:
-      if (isTarik) {
-        // 🔹 Alur "tarik": parsed = jumlah yang masuk (setelah fee), lalu input manual jumlah keluar
-        state.jumlahMasuk = parsed.nominal;
-        state.step = "jumlahKeluar";
-      } else if (state.akunKeluar === "Fjlsaldo") {
-        // 🔹 Fjlsaldo: parsed = jumlah masuk, lalu input manual jumlah keluar
+      if (state.akunKeluar === "Fjlsaldo") {
         state.jumlahMasuk = parsed.nominal;
         state.step = "jumlahKeluar";
       } else if (state.akunKeluar === "Seabank" && isToken) {
-        // 🔹 Token via Seabank: auto tambah fee, parsed + TOKEN_FEE = jumlah masuk
         state.jumlahMasuk = parsed.nominal + TOKEN_FEE;
         state.step = "jumlahKeluar";
       } else {
-        // 🔹 Default (jual pulsa biasa): parsed = jumlah keluar (modal), lalu input manual jumlah masuk
         state.jumlahKeluar = parsed.nominal;
         state.step = "jumlahMasuk";
       }
@@ -384,19 +374,17 @@ Catatan: ${state.catatan}${warning}`;
 
       case "deskripsi":
         return edit(
-          "Masukkan deskripsi.\n\nContoh:\n• Tarik Dana 100K\n• Token Seabank 50K\n• Jual Pulsa 20K",
+          "Masukkan deskripsi.\n\nContoh:\nDana 20K",
           kbText(true),
         );
 
       case "jumlahKeluar":
         return edit(
-          `Masukkan MODAL / jumlah yang kamu keluarkan.
+          `Masukkan MODAL / jumlah yang keluar.
 
-💡 Dari deskripsi "${state.deskripsi}":
-• Diterima (estimasi): ${formatRupiah(state.jumlahMasuk)}
-• Tag: ${state.tag}
-
-💬 Ketik nominal keluar, contoh: 95000 atau 95K`,
+💡 Otomatis terdeteksi:
+Pembeli bayar: ${formatRupiah(state.jumlahMasuk)}
+Tag: ${state.tag}`,
           kbText(true),
         );
 
@@ -404,11 +392,9 @@ Catatan: ${state.catatan}${warning}`;
         return edit(
           `Masukkan jumlah DITERIMA dari pembeli.
 
-💡 Dari deskripsi "${state.deskripsi}":
-• Kamu keluarkan (estimasi): ${formatRupiah(state.jumlahKeluar)}
-• Tag: ${state.tag}
-
-💬 Ketik nominal masuk, contoh: 103000 atau 103K`,
+💡 Otomatis terdeteksi:
+Kamu keluarkan: ${formatRupiah(state.jumlahKeluar)}
+Tag: ${state.tag}`,
           kbText(true),
         );
 
