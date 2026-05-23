@@ -35,6 +35,9 @@ const parseAmount = (str) => {
   return Math.round(amount);
 };
 
+const findAkun = (name) =>
+  OPTIONS.akun.find((a) => a.toLowerCase() === name.toLowerCase());
+
 /* =========================
    GOOGLE SHEETS
 ========================= */
@@ -87,22 +90,27 @@ export default {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
     const args = ctx.message?.text?.trim().split(/\s+/).slice(1);
-    if (args.length < 3) {
+    if (args.length < 4) {
       return ctx.reply(
-        "❌ Format salah.\n\nGunakan: `/selli <akunMasuk> <jumlahKeluar> <jumlahMasuk>`\nContoh: `/selli Dana 20K 22K`",
+        "❌ Format salah.\n\nGunakan: `/selli <akunKeluar> <akunMasuk> <jumlahKeluar> <jumlahMasuk>`\nContoh: `/selli Dana Wallet 20K 22K`",
         { parse_mode: "Markdown" }
       );
     }
 
-    const [akunMasukRaw, keluarRaw, masukRaw] = args;
-    const akunMasuk = OPTIONS.akun.find(
-      (a) => a.toLowerCase() === akunMasukRaw.toLowerCase()
-    );
+    const [akunKeluarRaw, akunMasukRaw, keluarRaw, masukRaw] = args;
+    
+    const akunKeluar = findAkun(akunKeluarRaw);
+    const akunMasuk = findAkun(akunMasukRaw);
 
-    if (!akunMasuk) {
+    if (!akunKeluar || !akunMasuk) {
+      const valid = OPTIONS.akun.join(", ");
       return ctx.reply(
-        `❌ Akun tidak valid.\nPilihan: ${OPTIONS.akun.join(", ")}`
+        `❌ Akun tidak valid.\nPilihan: ${valid}`
       );
+    }
+
+    if (akunKeluar === akunMasuk) {
+      return ctx.reply("❌ Akun masuk dan keluar tidak boleh sama.");
     }
 
     const jumlahKeluar = parseAmount(keluarRaw);
@@ -115,14 +123,8 @@ export default {
     }
 
     const rows = await fetchAllRows();
-    const akunKeluar = "Usaha"; // Default akun pengeluaran untuk selli
-
-    if (akunMasuk === akunKeluar) {
-      return ctx.reply("❌ Akun masuk dan keluar tidak boleh sama.");
-    }
-
-    const masukInfo = getLastSaldo(rows, akunMasuk);
     const keluarInfo = getLastSaldo(rows, akunKeluar);
+    const masukInfo = getLastSaldo(rows, akunMasuk);
 
     if (keluarInfo.saldo < jumlahKeluar) {
       return ctx.reply(
@@ -130,10 +132,10 @@ export default {
       );
     }
 
-    const saldoMasukSebelum = masukInfo.saldo;
-    const saldoMasukSesudah = saldoMasukSebelum + jumlahMasuk;
     const saldoKeluarSebelum = keluarInfo.saldo;
     const saldoKeluarSesudah = saldoKeluarSebelum - jumlahKeluar;
+    const saldoMasukSebelum = masukInfo.saldo;
+    const saldoMasukSesudah = saldoMasukSebelum + jumlahMasuk;
 
     const now = new Date().toISOString();
     const deskripsi = `Jual ${akunMasuk}`;
@@ -189,12 +191,9 @@ export default {
 
 🧾 DETAIL:
 Deskripsi: ${deskripsi}
-Pembeli bayar: ${formatRupiah(jumlahMasuk)}
-Kamu keluarkan: ${formatRupiah(jumlahKeluar)}
-Keuntungan: ${formatRupiah(keuntungan)}
-
-Akun Masuk: ${akunMasuk} (Cash)
-Akun Keluar: ${akunKeluar} (Transfer)
+💸 Keluar: ${formatRupiah(jumlahKeluar)} dari ${akunKeluar}
+💰 Masuk: ${formatRupiah(jumlahMasuk)} ke ${akunMasuk}
+📈 Keuntungan: ${formatRupiah(keuntungan)}
 
 ${saldoLines}
 
