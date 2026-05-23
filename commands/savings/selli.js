@@ -2,19 +2,17 @@
 import { google } from "googleapis";
 
 /* =========================
-   OPTIONS
+   OPTIONS & STATE
 ========================= */
 const OPTIONS = {
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Fjlsaldo", "Gopay"],
 };
-const TOKEN_FEE = 3000;
+
+const states = new Map();
 
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) =>
-  Number(String(v).replace(/\./g, "").replace(",", "."));
-
 const formatRupiah = (n) => {
   const abs = Math.abs(n).toLocaleString("id-ID");
   return n < 0 ? `-Rp${abs}` : `Rp${abs}`;
@@ -80,6 +78,18 @@ async function appendRows(values) {
   });
 }
 
+async function safeEdit(ctx, chatId, messageId, text, markup) {
+  try {
+    return await ctx.api.editMessageText(chatId, messageId, text, {
+      reply_markup: markup,
+    });
+  } catch (err) {
+    if (err.description?.includes("message is not modified")) return;
+    console.error("❌ editMessageText error:", err);
+    throw err;
+  }
+}
+
 /* =========================
    COMMAND
 ========================= */
@@ -98,17 +108,12 @@ export default {
     }
 
     const [akunKeluarRaw, akunMasukRaw, keluarRaw, masukRaw] = args;
-    
     const akunKeluar = findAkun(akunKeluarRaw);
     const akunMasuk = findAkun(akunMasukRaw);
 
     if (!akunKeluar || !akunMasuk) {
-      const valid = OPTIONS.akun.join(", ");
-      return ctx.reply(
-        `❌ Akun tidak valid.\nPilihan: ${valid}`
-      );
+      return ctx.reply(`❌ Akun tidak valid.\nPilihan: ${OPTIONS.akun.join(", ")}`);
     }
-
     if (akunKeluar === akunMasuk) {
       return ctx.reply("❌ Akun masuk dan keluar tidak boleh sama.");
     }
@@ -117,9 +122,7 @@ export default {
     const jumlahMasuk = parseAmount(masukRaw);
 
     if (jumlahKeluar === null || jumlahMasuk === null) {
-      return ctx.reply(
-        "❌ Format jumlah salah.\nGunakan angka dengan suffix: K, rb, ribu, jt, juta\nContoh: `20K`, `1.5jt`"
-      );
+      return ctx.reply("❌ Format jumlah salah.\nGunakan suffix: K, rb, ribu, jt, juta");
     }
 
     const rows = await fetchAllRows();
@@ -127,79 +130,96 @@ export default {
     const masukInfo = getLastSaldo(rows, akunMasuk);
 
     if (keluarInfo.saldo < jumlahKeluar) {
-      return ctx.reply(
-        `❌ Saldo ${akunKeluar} tidak mencukupi.\nTersedia: ${formatRupiah(keluarInfo.saldo)}`
-      );
+      return ctx.reply(`❌ Saldo ${akunKeluar} tidak mencukupi.\nTersedia: ${formatRupiah(keluarInfo.saldo)}`);
     }
 
     const saldoKeluarSebelum = keluarInfo.saldo;
     const saldoKeluarSesudah = saldoKeluarSebelum - jumlahKeluar;
     const saldoMasukSebelum = masukInfo.saldo;
     const saldoMasukSesudah = saldoMasukSebelum + jumlahMasuk;
-
-    const now = new Date().toISOString();
-    const deskripsi = `Jual ${akunMasuk}`;
-    const tag = `#selli`;
-    const catatan = `Auto via /selli`;
-
-    const entries = [
-      [
-        "Pengeluaran",
-        "Usaha",
-        "Penjualan",
-        deskripsi,
-        jumlahKeluar,
-        "Rp",
-        akunKeluar,
-        "Transfer",
-        saldoKeluarSebelum,
-        saldoKeluarSesudah,
-        tag,
-        catatan,
-        now,
-        now,
-      ],
-      [
-        "Pemasukan",
-        "Usaha",
-        "Penjualan",
-        deskripsi,
-        jumlahMasuk,
-        "Rp",
-        akunMasuk,
-        "Cash",
-        saldoMasukSebelum,
-        saldoMasukSesudah,
-        tag,
-        catatan,
-        now,
-        now,
-      ],
-    ];
-
-    await appendRows(entries);
-
     const keuntungan = jumlahMasuk - jumlahKeluar;
-    const warning = keuntungan < 0 ? "\n⚠️ Transaksi rugi." : "";
 
-    const saldoLines = [
-      formatSaldoLine(akunKeluar, saldoKeluarSebelum, saldoKeluarSesudah, true),
-      formatSaldoLine(akunMasuk, saldoMasukSebelum, saldoMasukSesudah, false),
-    ].join("\n");
+    // 🔥 Format simple sesuai request
+    const deskripsi = `${akunKeluar} ${keluarRaw}`;
+    const tag = `#${akunKeluar.toLowerCase()}`;
+    const catatan = "-";
 
-    const successText = `✅ Transaksi jual berhasil disimpan!
+    const msg = await ctx.reply(
+      `🧾 PREVIEW TRANSAKSI
 
-🧾 DETAIL:
-Deskripsi: ${deskripsi}
+📝 Deskripsi: ${deskripsi}
 💸 Keluar: ${formatRupiah(jumlahKeluar)} dari ${akunKeluar}
 💰 Masuk: ${formatRupiah(jumlahMasuk)} ke ${akunMasuk}
 📈 Keuntungan: ${formatRupiah(keuntungan)}
 
-${saldoLines}
+${formatSaldoLine(akunKeluar, saldoKeluarSebelum, saldoKeluarSesudah, true)}
+${formatSaldoLine(akunMasuk, saldoMasukSebelum, saldoMasukSesudah, false)}
 
-Tag: ${tag}
-Catatan: ${catatan}${warning}`;
+Tag: ${tag} | Catatan: ${catatan}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "✅ Simpan", callback_data: "selli:save:ok" }],
+            [{ text: "❌ Batal", callback_data: "selli:cancel" }],
+          ],
+        },
+      }
+    );
 
-    return ctx.reply(successText);
+    states.set(ctx.from.id, {
+      chatId: ctx.chat.id,
+      messageId: msg.message_id,
+      akunKeluar,
+      akunMasuk,
+      jumlahKeluar,
+      jumlahMasuk,
+      deskripsi,
+      tag,
+      catatan,
+      saldoKeluarSebelum,
+      saldoKeluarSesudah,
+      saldoMasukSebelum,
+      saldoMasukSesudah,
+    });
+  },
+
+  async handleCallback(ctx) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    if (!ctx.callbackQuery?.data?.startsWith("selli:")) return;
+
+    const state = states.get(ctx.from.id);
+    if (!state) return;
+
+    const edit = (text, markup) =>
+      safeEdit(ctx, state.chatId, state.messageId, text, markup);
+    const data = ctx.callbackQuery.data;
+
+    if (data === "selli:cancel") {
+      states.delete(ctx.from.id);
+      return edit("❌ Transaksi dibatalkan.");
+    }
+
+    if (data === "selli:save:ok") {
+      const now = new Date().toISOString();
+
+      const entries = [
+        [
+          "Pengeluaran", "Usaha", "Penjualan", state.deskripsi, state.jumlahKeluar, "Rp",
+          state.akunKeluar, "Transfer", state.saldoKeluarSebelum, state.saldoKeluarSesudah,
+          state.tag, state.catatan, now, now,
+        ],
+        [
+          "Pemasukan", "Usaha", "Penjualan", state.deskripsi, state.jumlahMasuk, "Rp",
+          state.akunMasuk, "Cash", state.saldoMasukSebelum, state.saldoMasukSesudah,
+          state.tag, state.catatan, now, now,
+        ],
+      ];
+
+      await appendRows(entries);
+      states.delete(ctx.from.id);
+
+      const warning = state.jumlahMasuk - state.jumlahKeluar < 0 ? "\n⚠️ Transaksi rugi." : "";
+      return edit(`✅ Transaksi berhasil disimpan!${warning}\n\n🧾 ${state.deskripsi}\n💸 Keluar: ${formatRupiah(state.jumlahKeluar)}\n💰 Masuk: ${formatRupiah(state.jumlahMasuk)}`);
+    }
   },
 };
