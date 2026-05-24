@@ -31,21 +31,19 @@ async function fetchTransactions() {
 const formatRupiah = (n) =>
   "Rp" + new Intl.NumberFormat("id-ID").format(n || 0);
 
-// ✅ NEW: Format margin dengan koma desimal (id-ID) + simbol %
 const formatMargin = (profit, masuk) => {
-  if (!masuk || masuk <= 0) return "~0,00%";
+  if (!masuk || masuk <= 0) return "0,00%";
   const margin = (profit / masuk) * 100;
-  return `~${margin.toFixed(2).replace(".", ",")}%`;
+  return `${margin.toFixed(2).replace(".", ",")}%`;
 };
 
-// ✅ NEW: Emoji indikator margin
 const getMarginEmoji = (profit, masuk) => {
   if (!masuk || masuk <= 0) return "";
   const margin = (profit / masuk) * 100;
-  if (margin >= 4) return " ⚡"; // Margin tinggi
-  if (margin >= 2.5) return " ✅"; // Normal
-  if (margin < 0) return " ⚠️"; // Rugi
-  return ""; // Margin tipis
+  if (margin >= 4) return " ⚡";
+  if (margin >= 2.5) return " ✅";
+  if (margin < 0) return " ⚠️";
+  return "";
 };
 
 function getWIBDate(date = new Date()) {
@@ -108,11 +106,7 @@ function calculateProfit(rows, startDate, endDate) {
     if (jenis === "Pengeluaran") keluar += jumlah;
   });
 
-  return {
-    masuk,
-    keluar,
-    profit: masuk - keluar,
-  };
+  return { masuk, keluar, profit: masuk - keluar };
 }
 
 /* =========================
@@ -166,44 +160,30 @@ export default {
     const optionsMonth = { month: "long", year: "2-digit" };
     const optionsDate = { day: "numeric", month: "numeric", year: "2-digit" };
 
-    // ✅ Helper untuk format satu blok periode
-    const formatPeriod = (label, data, dateStr, showEmoji = true) => {
+    const formatPeriod = (label, dateStr, data, showEmoji = true) => {
       const margin = formatMargin(data.profit, data.masuk);
       const emoji = showEmoji ? getMarginEmoji(data.profit, data.masuk) : "";
       return (
-        `${label}${dateStr ? ` (${dateStr})` : ""}\n` +
+        `${label} (${dateStr})\n` +
         `🟢 Pemasukan : ${formatRupiah(data.masuk)}\n` +
         `🔴 Pengeluaran : ${formatRupiah(data.keluar)}\n` +
-        `💰 Profit : ${formatRupiah(data.profit)}\n` +
-        `📊 Margin : ${margin}${emoji}\n`
+        `💰 Profit : ${formatRupiah(data.profit)} | ~${margin}${emoji}\n`
       );
     };
 
     const text =
       `📊 *RINGKASAN PROFIT USAHA PULSA*\n\n` +
-      `🕒 *SEMUA WAKTU*\n` +
+      `🕒 SEMUA WAKTU\n` +
       `🟢 Pemasukan : ${formatRupiah(all.masuk)}\n` +
       `🔴 Pengeluaran : ${formatRupiah(all.keluar)}\n` +
-      `💰 Profit : ${formatRupiah(all.profit)}\n` +
-      `📊 Margin : ${formatMargin(all.profit, all.masuk)}\n\n` +
+      `💰 Profit : ${formatRupiah(all.profit)} | ~${formatMargin(all.profit, all.masuk)}\n\n` +
 
-      `📅 *BULAN LALU*\n` +
-      formatPeriod("", lastMonth, startLastMonth.toLocaleDateString("id-ID", optionsMonth), false) + `\n` +
-
-      `📅 *BULAN INI*\n` +
-      formatPeriod("", thisMonth, nowWIB.toLocaleDateString("id-ID", optionsMonth), false) + `\n` +
-
-      `📆 *MINGGU LALU*\n` +
-      formatPeriod("", lastWeek, `${startLastWeek.toLocaleDateString("id-ID", optionsDate)} - ${endLastWeek.toLocaleDateString("id-ID", optionsDate)}`, false) + `\n` +
-
-      `📆 *MINGGU INI*\n` +
-      formatPeriod("", thisWeek, `${startThisWeek.toLocaleDateString("id-ID", optionsDate)} - ${nowWIB.toLocaleDateString("id-ID", optionsDate)}`, false) + `\n` +
-
-      `🗓️ *HARI KEMARIN*\n` +
-      formatPeriod("", yesterday, startYesterday.toLocaleDateString("id-ID", optionsDate)) + `\n` +
-
-      `🗓️ *HARI INI*\n` +
-      formatPeriod("", today, nowWIB.toLocaleDateString("id-ID", optionsDate));
+      formatPeriod("📅 BULAN LALU", startLastMonth.toLocaleDateString("id-ID", optionsMonth), lastMonth, false) + `\n` +
+      formatPeriod("📅 BULAN INI", nowWIB.toLocaleDateString("id-ID", optionsMonth), thisMonth, false) + `\n` +
+      formatPeriod("📆 MINGGU LALU", `${startLastWeek.toLocaleDateString("id-ID", optionsDate)} - ${endLastWeek.toLocaleDateString("id-ID", optionsDate)}`, lastWeek, false) + `\n` +
+      formatPeriod("📆 MINGGU INI", `${startThisWeek.toLocaleDateString("id-ID", optionsDate)} - ${nowWIB.toLocaleDateString("id-ID", optionsDate)}`, thisWeek, false) + `\n` +
+      formatPeriod("🗓️ HARI KEMARIN", startYesterday.toLocaleDateString("id-ID", optionsDate), yesterday) + `\n` +
+      formatPeriod("🗓️ HARI INI", nowWIB.toLocaleDateString("id-ID", optionsDate), today);
 
     return ctx.reply(text, { parse_mode: "Markdown" });
   },
