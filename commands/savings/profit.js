@@ -119,9 +119,22 @@ export default {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
     const rows = await fetchTransactions();
+    if (!rows.length) return ctx.reply("📭 Belum ada data transaksi.");
 
-    if (!rows.length) {
-      return ctx.reply("📭 Belum ada data transaksi.");
+    // ✅ Hitung rentang tanggal untuk SEMUA WAKTU
+    const relevantRows = rows.filter(r => r[1] === "Usaha" && r[2] === "Penjualan");
+    let allTimeDateRange = "";
+    if (relevantRows.length > 0) {
+      const dates = relevantRows
+        .map(r => new Date(r[12]))
+        .filter(d => !isNaN(d));
+      
+      if (dates.length > 0) {
+        const minDate = new Date(Math.min(...dates));
+        const maxDate = new Date(Math.max(...dates));
+        const opts = { day: "numeric", month: "numeric", year: "2-digit" };
+        allTimeDateRange = ` (${minDate.toLocaleDateString("id-ID", opts)} - ${maxDate.toLocaleDateString("id-ID", opts)})`;
+      }
     }
 
     const nowWIB = getWIBDate();
@@ -173,7 +186,7 @@ export default {
 
     const text =
       `📊 *RINGKASAN PROFIT USAHA PULSA*\n\n` +
-      `🕒 SEMUA WAKTU\n` +
+      `🕒 SEMUA WAKTU${allTimeDateRange}\n` +
       `🟢 Pemasukan : ${formatRupiah(all.masuk)}\n` +
       `🔴 Pengeluaran : ${formatRupiah(all.keluar)}\n` +
       `💰 Profit : ${formatRupiah(all.profit)} | ~${formatMargin(all.profit, all.masuk)}\n\n` +
