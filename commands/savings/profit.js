@@ -31,9 +31,26 @@ async function fetchTransactions() {
 const formatRupiah = (n) =>
   "Rp" + new Intl.NumberFormat("id-ID").format(n || 0);
 
+// ✅ NEW: Format margin dengan koma desimal (id-ID) + simbol %
+const formatMargin = (profit, masuk) => {
+  if (!masuk || masuk <= 0) return "~0,00%";
+  const margin = (profit / masuk) * 100;
+  return `~${margin.toFixed(2).replace(".", ",")}%`;
+};
+
+// ✅ NEW: Emoji indikator margin
+const getMarginEmoji = (profit, masuk) => {
+  if (!masuk || masuk <= 0) return "";
+  const margin = (profit / masuk) * 100;
+  if (margin >= 4) return " ⚡"; // Margin tinggi
+  if (margin >= 2.5) return " ✅"; // Normal
+  if (margin < 0) return " ⚠️"; // Rugi
+  return ""; // Margin tipis
+};
+
 function getWIBDate(date = new Date()) {
   const d = new Date(date);
-  d.setHours(d.getHours() + 7); // WIB = UTC+7
+  d.setHours(d.getHours() + 7);
   return d;
 }
 
@@ -83,9 +100,7 @@ function calculateProfit(rows, startDate, endDate) {
     const jumlah = Number(r[4]) || 0;
     const createdAt = new Date(r[12]);
 
-    // hanya hitung usaha penjualan
     if (kategori !== "Usaha" || subKategori !== "Penjualan") return;
-
     if (startDate && createdAt < startDate) return;
     if (endDate && createdAt > endDate) return;
 
@@ -140,7 +155,7 @@ export default {
     startLastMonth.setHours(0, 0, 0, 0);
     const endLastMonth = endOfMonth(startLastMonth);
 
-    const all = calculateProfit(rows, null, null); // semua waktu
+    const all = calculateProfit(rows, null, null);
     const today = calculateProfit(rows, startToday, endToday);
     const yesterday = calculateProfit(rows, startYesterday, endYesterday);
     const thisWeek = calculateProfit(rows, startThisWeek, null);
@@ -151,42 +166,44 @@ export default {
     const optionsMonth = { month: "long", year: "2-digit" };
     const optionsDate = { day: "numeric", month: "numeric", year: "2-digit" };
 
+    // ✅ Helper untuk format satu blok periode
+    const formatPeriod = (label, data, dateStr, showEmoji = true) => {
+      const margin = formatMargin(data.profit, data.masuk);
+      const emoji = showEmoji ? getMarginEmoji(data.profit, data.masuk) : "";
+      return (
+        `${label}${dateStr ? ` (${dateStr})` : ""}\n` +
+        `🟢 Pemasukan : ${formatRupiah(data.masuk)}\n` +
+        `🔴 Pengeluaran : ${formatRupiah(data.keluar)}\n` +
+        `💰 Profit : ${formatRupiah(data.profit)}\n` +
+        `📊 Margin : ${margin}${emoji}\n`
+      );
+    };
+
     const text =
       `📊 *RINGKASAN PROFIT USAHA PULSA*\n\n` +
       `🕒 *SEMUA WAKTU*\n` +
       `🟢 Pemasukan : ${formatRupiah(all.masuk)}\n` +
       `🔴 Pengeluaran : ${formatRupiah(all.keluar)}\n` +
-      `💰 Profit : ${formatRupiah(all.profit)}\n\n` +
+      `💰 Profit : ${formatRupiah(all.profit)}\n` +
+      `📊 Margin : ${formatMargin(all.profit, all.masuk)}\n\n` +
 
-      `📅 *BULAN LALU (${startLastMonth.toLocaleDateString("id-ID", optionsMonth)})*\n` +
-      `🟢 Pemasukan : ${formatRupiah(lastMonth.masuk)}\n` +
-      `🔴 Pengeluaran : ${formatRupiah(lastMonth.keluar)}\n` +
-      `💰 Profit : ${formatRupiah(lastMonth.profit)}\n\n` +
+      `📅 *BULAN LALU*\n` +
+      formatPeriod("", lastMonth, startLastMonth.toLocaleDateString("id-ID", optionsMonth), false) + `\n` +
 
-      `📅 *BULAN INI (${nowWIB.toLocaleDateString("id-ID", optionsMonth)})*\n` +
-      `🟢 Pemasukan : ${formatRupiah(thisMonth.masuk)}\n` +
-      `🔴 Pengeluaran : ${formatRupiah(thisMonth.keluar)}\n` +
-      `💰 Profit : ${formatRupiah(thisMonth.profit)}\n\n` +
+      `📅 *BULAN INI*\n` +
+      formatPeriod("", thisMonth, nowWIB.toLocaleDateString("id-ID", optionsMonth), false) + `\n` +
 
-      `📆 *MINGGU LALU (${startLastWeek.toLocaleDateString("id-ID", optionsDate)} - ${endLastWeek.toLocaleDateString("id-ID", optionsDate)})*\n` +
-      `🟢 Pemasukan : ${formatRupiah(lastWeek.masuk)}\n` +
-      `🔴 Pengeluaran : ${formatRupiah(lastWeek.keluar)}\n` +
-      `💰 Profit : ${formatRupiah(lastWeek.profit)}\n\n` +
+      `📆 *MINGGU LALU*\n` +
+      formatPeriod("", lastWeek, `${startLastWeek.toLocaleDateString("id-ID", optionsDate)} - ${endLastWeek.toLocaleDateString("id-ID", optionsDate)}`, false) + `\n` +
 
-      `📆 *MINGGU INI (${startThisWeek.toLocaleDateString("id-ID", optionsDate)} - ${nowWIB.toLocaleDateString("id-ID", optionsDate)})*\n` +
-      `🟢 Pemasukan : ${formatRupiah(thisWeek.masuk)}\n` +
-      `🔴 Pengeluaran : ${formatRupiah(thisWeek.keluar)}\n` +
-      `💰 Profit : ${formatRupiah(thisWeek.profit)}\n\n` +
+      `📆 *MINGGU INI*\n` +
+      formatPeriod("", thisWeek, `${startThisWeek.toLocaleDateString("id-ID", optionsDate)} - ${nowWIB.toLocaleDateString("id-ID", optionsDate)}`, false) + `\n` +
 
-      `🗓️ *HARI KEMARIN (${startYesterday.toLocaleDateString("id-ID", optionsDate)})*\n` +
-      `🟢 Pemasukan : ${formatRupiah(yesterday.masuk)}\n` +
-      `🔴 Pengeluaran : ${formatRupiah(yesterday.keluar)}\n` +
-      `💰 Profit : ${formatRupiah(yesterday.profit)}\n\n` +
+      `🗓️ *HARI KEMARIN*\n` +
+      formatPeriod("", yesterday, startYesterday.toLocaleDateString("id-ID", optionsDate)) + `\n` +
 
-      `🗓️ *HARI INI (${nowWIB.toLocaleDateString("id-ID", optionsDate)})*\n` +
-      `🟢 Pemasukan : ${formatRupiah(today.masuk)}\n` +
-      `🔴 Pengeluaran : ${formatRupiah(today.keluar)}\n` +
-      `💰 Profit : ${formatRupiah(today.profit)}`;
+      `🗓️ *HARI INI*\n` +
+      formatPeriod("", today, nowWIB.toLocaleDateString("id-ID", optionsDate));
 
     return ctx.reply(text, { parse_mode: "Markdown" });
   },
