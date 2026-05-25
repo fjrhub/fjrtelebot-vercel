@@ -44,7 +44,6 @@ async function getWalletBalance() {
 
     const name = account.toLowerCase().trim();
 
-    // hanya ambil Wallet atau B2
     if (name === "wallet" || name === "b2") {
       const saldo = Number(balance);
 
@@ -95,13 +94,12 @@ Format:
         totalCash += pecahan[i] * numbers[i];
       }
 
-      // ambil saldo wallet/b2
       const walletBalance = await getWalletBalance();
 
-      // selisih
-      const difference = walletBalance - totalCash;
+      // ✅ Cash sebagai patokan: Cash - Wallet
+      const difference = totalCash - walletBalance;
 
-const hasil = `
+      const hasil = `
 <b>💸 CASH CHECK</b>
 
 💵 100K × ${numbers[0]} = <code>${formatRp(100000 * numbers[0])}</code>
@@ -121,16 +119,16 @@ const hasil = `
 
 ${
   difference > 0
-    ? "⚠️ Wallet lebih besar"
+    ? "✅ Cash lebih besar"
     : difference < 0
-      ? "⚠️ Cash lebih besar"
+      ? "⚠️ Wallet lebih besar"
       : "✅ Balance sesuai"
 }
 `.trim();
 
-await ctx.reply(hasil, {
-  parse_mode: "HTML",
-});
+      await ctx.reply(hasil, {
+        parse_mode: "HTML",
+      });
     } catch (err) {
       console.error(err);
       await ctx.reply("Terjadi error saat menghitung uang.");
