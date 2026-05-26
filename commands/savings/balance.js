@@ -147,7 +147,7 @@ ${accountMessages.join("\n\n")}
 
     // ── GOALS MODE: Summary view ──
     const TARGET = 10_000_000;
-    const TRADING_RISK_PERCENT = 0.02;
+    const TRADING_RISK_PERCENT = 0.01;
 
     // Fetch both ranges to ensure we capture USDT/BTC even if formatted differently
     const [rowsNormal, rowsFormatted] = await Promise.all([
