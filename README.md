@@ -1,148 +1,160 @@
-# Personal Finance Telegram Bot
+# fjrtelebot-vercel
 
-A simple Telegram bot to **record and monitor personal finances** using **Google Sheets as the primary database**, with **MongoDB** for auxiliary data and **Groq AI** for smart insights.
+> Personal Finance Tracker via Telegram — Google Sheets + MongoDB + Groq AI, deployed on Vercel Serverless.
 
-This project is intended for **personal use**, with a focus on data clarity, transparency, and ease of maintenance.
-
----
-
-## ✨ Key Features
-
-### ✅ Transaction Logging
-
-* Income
-* Expense
-* Account-to-account transfer
-* Categories & sub-categories
-* Multiple accounts (Wallet, Bank, E-Wallet, Binance, etc.)
-* Multiple currencies (**Rp & USDT**)
-
-### 📊 Balance Check (`/balance`)
-
-* Displays balance **per account**
-* Supports **Rp & USDT**
-* Total balance **separated by currency**
-* Safe for empty data (`#N/A` is automatically treated as 0)
-* Timestamp uses **WIB (Asia/Jakarta)**
-
-### 🤖 AI Insights (Powered by Groq)
-
-* Smart categorization suggestions
-* Spending analysis summaries
-* Natural language queries about your finances
+[![Status](https://img.shields.io/badge/status-active-success?style=flat-square)](https://github.com/fjrhub/fjrtelebot-vercel)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Vercel](https://img.shields.io/badge/deployed%20on-Vercel-000?style=flat-square&logo=vercel)](https://vercel.com)
+[![Telegram](https://img.shields.io/badge/bot-Telegram-2CA5E0?style=flat-square&logo=telegram)](https://telegram.org)
+[![Node.js](https://img.shields.io/badge/runtime-Node.js-339933?style=flat-square&logo=nodedotjs)](https://nodejs.org)
 
 ---
 
-## 🧱 Data Structure (Google Sheets)
+## Overview
 
-### Transactions Sheet (`Sheet1`)
-
-| Column | Description              |
-|--------|--------------------------|
-| F      | Currency (`Rp` / `USDT`) |
-| G      | Account                  |
-| J      | Balance after transaction |
-
-### Account Summary Sheet
-
-| Column | Content          |
-|--------|------------------|
-| S      | Account Name     || T      | Latest Balance   |
-| U      | Account Currency |
-
-> Balance and currency are derived from the **latest transaction** of each account.
+Bot Telegram untuk pencatatan keuangan personal. Transaksi dicatat via chat, disimpan ke Google Sheets sebagai sumber utama, dan MongoDB untuk sesi & cache AI. Semua command di-lock ke `OWNER_ID`.
 
 ---
 
-## 🔁 Google Sheets Formulas
+## Features
 
-### Latest Account Balance
+| Feature | Keterangan |
+|---------|------------|
+| 📝 Transaction Log | Income · Expense · Transfer · Kategori · Multi-currency (Rp / USDT) |
+| 📊 `/balance` | Saldo real-time per akun · Currency terpisah · Timestamp WIB |
+| 🤖 AI Insights | Smart categorization & spending summary via Groq |
+| 🔐 Owner-Only | Semua command dibatasi ke `OWNER_ID` |
+| 🔄 Dual Storage | Google Sheets (source of truth) + MongoDB (sessions/cache) |
 
-```excel
-=IFERROR(
-  INDEX(
-    Sheet1!J:J;
-    MAX(
-      FILTER(
-        ROW(Sheet1!G:G);
-        Sheet1!G:G=S2
-      )
-    )
-  );
-  0
-)
-```
+---
 
-### Account Currency
+## Tech Stack
 
-```excel
-=IFERROR(
-  INDEX(
-    Sheet1!F:F;
-    MAX(
-      FILTER(
-        ROW(Sheet1!G:G);
-        Sheet1!G:G=S2
-      )
-    )
-  );
-  "Rp"
-)
+| Layer | Tools |
+|-------|-------|
+| Runtime | Node.js + Next.js (Vercel Serverless) |
+| Bot Framework | [Grammy.js](https://grammy.dev) |
+| Primary Storage | Google Sheets API |
+| Auxiliary DB | MongoDB Atlas |
+| AI | [Groq Cloud](https://console.groq.com) |
+| Deploy | Vercel (Webhook / Polling) |
+
+---
+
+## Quick Start
+
+```bash
+# Clone & install
+git clone https://github.com/fjrhub/fjrtelebot-vercel.git
+cd fjrtelebot-vercel
+npm install
+
+# Setup environment
+cp .env.local.example .env.local
+# Edit .env.local dengan credentials kamu
+
+# Run local (polling mode)
+npm run dev
+
+# Deploy ke Vercel
+vercel --prod
 ```
 
 ---
 
-## 🔐 Environment Variables
+## Environment Variables
 
-Copy the `.env.local.example` file to `.env` (or `.env.local`) and fill in the values:
+| Variable | Keterangan | Sumber |
+|----------|-----------|--------|
+| `BOT_TOKEN` | Token autentikasi bot | [@BotFather](https://t.me/BotFather) |
+| `OWNER_ID` | Telegram ID admin | [@userinfobot](https://t.me/userinfobot) |
+| `TELEGRAM_MODE` | `polling` atau `webhook` | `polling` untuk lokal |
+| `WEBHOOK_SECRET` | Validasi webhook | `openssl rand -hex 16` |
+| `SPREADSHEET_ID` | ID Google Sheets | URL: `.../spreadsheets/d/<ID>/edit` |
+| `GOOGLE_API_KEY` | Akses Sheets API | Google Cloud Console |
+| `GOOGLE_CLIENT_EMAIL` | Email service account | Service Account JSON |
+| `GOOGLE_PRIVATE_KEY` | Private key service account | Service Account JSON *(jaga `\n`)* |
+| `MONGODB_URI` | Koneksi MongoDB | MongoDB Atlas |
+| `GROQ_API_KEY` | Inferensi AI | [Groq Cloud](https://console.groq.com) |
 
-```bashcp .env.local.example .env
-```
-
-### Configuration Details
-
-| Variable | Description | How to get it |
-| :--- | :--- | :--- |
-| `BOT_TOKEN` | Your Telegram Bot Token | Create a bot via [@BotFather](https://t.me/BotFather) on Telegram. |
-| `OWNER_ID` | Your Telegram User ID | Send a message to your bot, then check the update JSON for `from.id`, or ask [@userinfobot](https://t.me/userinfobot). |
-| `TELEGRAM_MODE` | Running mode (`polling` or `webhook`) | Use `polling` for local dev, `webhook` for production servers. |
-| `WEBHOOK_SECRET` | Secret key for webhook validation | Generate randomly: `openssl rand -hex 16` |
-| `SPREADSHEET_ID` | Google Sheet ID | Extract from URL: `docs.google.com/spreadsheets/d/<THIS_ID>/edit` |
-| `GOOGLE_API_KEY` | Google Cloud API Key | Create in [Google Cloud Console](https://console.cloud.google.com/apis/credentials). |
-| `MONGODB_URI` | MongoDB Connection String | Get from [MongoDB Atlas](https://cloud.mongodb.com/) Cluster > Connect > Drivers. |
-| `GROQ_API_KEY` | Groq Cloud API Key | Get from [Groq Cloud Console](https://console.groq.com/keys). |
-| `GOOGLE_CLIENT_EMAIL` | Service Account Email | Found in your downloaded Service Account JSON file (`client_email`). |
-| `GOOGLE_PRIVATE_KEY` | Service Account Private Key | Found in JSON file (`private_key`). **Keep `\n` characters intact.** |
-
-#### Example `.env` structure:
+<details>
+<summary>Contoh <code>.env.local</code></summary>
 
 ```env
-# Telegram Bot Configuration
+# Telegram
 BOT_TOKEN=your_bot_token_here
 OWNER_ID=123456789
 TELEGRAM_MODE=polling
 WEBHOOK_SECRET=your_generated_secret_hex
 
-# Google Sheets & Cloud Configuration
+# Google Sheets
 SPREADSHEET_ID=your_spreadsheet_id_here
 GOOGLE_API_KEY=your_google_api_key_here
-GOOGLE_CLIENT_EMAIL=your-service-account@project.iam.gserviceaccount.com
-GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----END PRIVATE KEY-----\n"
+GOOGLE_CLIENT_EMAIL=your-sa@project.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_KEY_HERE\n-----END PRIVATE KEY-----\n"
 
-# Database & AI Configuration
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority
-GROQ_API_KEY=gsk_your_groq_api_key_here
+# Database & AI
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/db?retryWrites=true
+GROQ_API_KEY=gsk_your_groq_key_here
+```
+</details>
+
+---
+
+## Google Sheets Structure
+
+### Sheet1 — Transactions
+
+| Kolom | Isi |
+|-------|-----|
+| `F` | Currency (`Rp` / `USDT`) |
+| `G` | Nama akun |
+| `J` | Saldo setelah transaksi |
+
+### Account Summary (Sheet1)
+
+| Kolom | Isi |
+|-------|-----|
+| `S` | Nama akun |
+| `T` | Saldo terbaru |
+| `U` | Currency akun |
+
+> Saldo dan currency diambil dari **transaksi terakhir** per akun.
+
+<details>
+<summary>Helper Formulas</summary>
+
+**Saldo terbaru per akun:**
+```excel
+=IFERROR(INDEX(Sheet1!J:J;MAX(FILTER(ROW(Sheet1!G:G);Sheet1!G:G=S2)));0)
 ```
 
----
-
-## 📌 Design Notes
-
-* Each account uses **only one currency**.
-* USDT is **not automatically converted** to Rp (balances are tracked separately).
-* **Google Sheets** acts as the single source of truth for transaction records.
-* **MongoDB** is used for storing user preferences, session data, or cached AI contexts.
-* **Groq AI** is utilized for processing natural language commands and generating financial summaries.
-* The bot restricts admin commands (like reset or config) to the `OWNER_ID`.
+**Currency per akun:**
+```excel
+=IFERROR(INDEX(Sheet1!F:F;MAX(FILTER(ROW(Sheet1!G:G);Sheet1!G:G=S2)));"Rp")
+```
+</details>
 
 ---
+
+## Design Principles
+
+- Setiap akun hanya boleh menggunakan **satu currency**
+- Saldo USDT dilacak **terpisah**, tidak ada auto-konversi ke Rp
+- Google Sheets = **single source of truth**
+- MongoDB = sessions, preferences, AI cache
+- Groq AI = natural language commands & spending summary
+- Semua command admin dibatasi via `OWNER_ID`
+
+---
+
+## Links
+
+- [Live Demo](https://fjrtelebot.vercel.app)
+- [Grammy.js Docs](https://grammy.dev)
+- [Telegram Bot API](https://core.telegram.org/bots/api)
+- [Groq Cloud](https://console.groq.com)
+
+---
+
+> Built by [@fjrhub](https://github.com/fjrhub) · MIT License
