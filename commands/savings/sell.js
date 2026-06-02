@@ -20,8 +20,20 @@ const states = new Map();
    UTIL
 ========================= */
 
-const toNumber = (v) =>
-  Number(String(v).replace(/\./g, "").replace(",", "."));
+// 🔥 Fungsi baru untuk parse angka yang support singkatan (K, RB, JT, dll)
+const parseAmount = (v) => {
+  const str = String(v).trim();
+  const match = str.match(/(\d+(?:[.,]\d+)?)\s*(k|rb|ribu|jt|juta)?/i);
+  if (!match) return NaN;
+
+  let amount = parseFloat(match[1].replace(/\./g, "").replace(",", "."));
+  const suffix = match[2]?.toLowerCase();
+
+  if (["k", "rb", "ribu"].includes(suffix)) amount *= 1000;
+  if (["jt", "juta"].includes(suffix)) amount *= 1000000;
+
+  return Math.round(amount);
+};
 
 const formatRupiah = (n) => {
   const abs = Math.abs(n).toLocaleString("id-ID");
@@ -34,29 +46,16 @@ const formatSaldoLine = (akun, before, after, isKeluar) => {
   return `${icon} ${akun}: ${formatRupiah(before)} → ${formatRupiah(after)}`;
 };
 
+// 🔥 Refactor parseSellText agar menggunakan parseAmount (DRY)
 function parseSellText(text) {
   const trimmed = text.trim();
   const firstWord = trimmed.split(" ")[0].toLowerCase();
+  const nominal = parseAmount(trimmed);
 
-  const amountMatch = trimmed.match(
-    /(\d+(?:[.,]\d+)?)\s*(k|rb|ribu|jt|juta)?/i,
-  );
-
-  if (!amountMatch) return null;
-
-  let amount = parseFloat(
-    amountMatch[1]
-      .replace(/\./g, "")
-      .replace(",", "."),
-  );
-
-  const suffix = amountMatch[2]?.toLowerCase();
-
-  if (["k", "rb", "ribu"].includes(suffix)) amount *= 1000;
-  if (["jt", "juta"].includes(suffix)) amount *= 1000000;
+  if (isNaN(nominal)) return null;
 
   return {
-    nominal: Math.round(amount),
+    nominal,
     tag: `#${firstWord}`,
   };
 }
@@ -340,11 +339,26 @@ Catatan: ${state.catatan}${warning}`;
         state.jumlahKeluar = parsed.nominal;
         state.step = "jumlahMasuk";
       }
-    } else if (state.step === "jumlahKeluar") {
-      state.jumlahKeluar = toNumber(ctx.message.text);
+      
+      return this.render(ctx, state);
+    } 
+    
+    // 🔥 UPDATE: Menggunakan parseAmount untuk step jumlahKeluar & jumlahMasuk
+    else if (state.step === "jumlahKeluar") {
+      const val = parseAmount(ctx.message.text);
+      if (isNaN(val)) {
+        return this.renderError(ctx, state, "❌ Format salah.\n\nContoh: 20K atau 100000");
+      }
+      state.jumlahKeluar = val;
       state.step = "confirm";
-    } else if (state.step === "jumlahMasuk") {
-      state.jumlahMasuk = toNumber(ctx.message.text);
+    } 
+    
+    else if (state.step === "jumlahMasuk") {
+      const val = parseAmount(ctx.message.text);
+      if (isNaN(val)) {
+        return this.renderError(ctx, state, "❌ Format salah.\n\nContoh: 22K atau 100000");
+      }
+      state.jumlahMasuk = val;
       state.step = "confirm";
     }
 
