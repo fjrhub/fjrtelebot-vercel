@@ -1,213 +1,244 @@
+// selli.js
 import { google } from "googleapis";
 
 /* =========================
-   GOOGLE SHEETS CLIENT
+   OPTIONS & STATE
+========================= */
+const OPTIONS = {
+  akun: ["Wallet", "Dana", "Seabank", "Bank", "Fjlsaldo", "Gopay"],
+};
+
+const states = new Map();
+
+/* =========================
+   UTIL
+========================= */
+const formatRupiah = (n) => {
+  const abs = Math.abs(n).toLocaleString("id-ID");
+  return n < 0 ? `-Rp${abs}` : `Rp${abs}`;
+};
+
+const formatSaldoLine = (akun, before, after, isKeluar) => {
+  const icon = isKeluar ? "💸" : "💰";
+  return `${icon} ${akun}: ${formatRupiah(before)} → ${formatRupiah(after)}`;
+};
+
+const parseAmount = (str) => {
+  const match = str.match(/^(\d+(?:[.,]\d+)?)(k|rb|ribu|jt|juta)?$/i);
+  if (!match) return null;
+  let amount = parseFloat(match[1].replace(/\./g, "").replace(",", "."));
+  const suffix = match[2]?.toLowerCase();
+  if (["k", "rb", "ribu"].includes(suffix)) amount *= 1000;
+  if (["jt", "juta"].includes(suffix)) amount *= 1000000;
+  return Math.round(amount);
+};
+
+const findAkun = (name) =>
+  OPTIONS.akun.find((a) => a.toLowerCase() === name.toLowerCase());
+
+/* =========================
+   GOOGLE SHEETS
 ========================= */
 function sheetsClient() {
   const auth = new google.auth.GoogleAuth({
     credentials: {
-      type: "service_account",
-      project_id: process.env.GOOGLE_PROJECT_ID,
       client_email: process.env.GOOGLE_CLIENT_EMAIL,
       private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
     },
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
-
   return google.sheets({ version: "v4", auth });
 }
 
-/* =========================
-   UTIL
-========================= */
-const formatRp = (n) => "Rp" + Math.round(n).toLocaleString("id-ID");
-
-function parseRp(value) {
-  if (!value) return 0;
-  const cleaned = String(value)
-    .replace(/[^0-9,-]/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
-  const num = Number(cleaned);
-  return isNaN(num) ? 0 : num;
-}
-
-function getJakartaDate() {
-  const now = new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }),
-  );
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = now.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
-}
-
-function getJakartaTime() {
-  const now = new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }),
-  );
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = now.getFullYear();
-  const hh = String(now.getHours()).padStart(2, "0");
-  const min = String(now.getMinutes()).padStart(2, "0");
-  return `${dd}/${mm}/${yyyy} ${hh}.${min} WIB`;
-}
-
-/* =========================
-   DATA
-========================= */
-async function getAccountsNormal() {
+async function fetchAllRows() {
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet2!A2:B",
+    range: "Sheet1!F2:J",
   });
   return res.data.values || [];
 }
 
-async function getAccountsFormatted() {
-  const sheets = sheetsClient();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.SPREADSHEET_ID,
-    range: "Sheet2!E2:F",
-  });
-  return res.data.values || [];
+function getLastSaldo(rows, akun) {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i][1] === akun) {
+      return { mataUang: "Rp", saldo: Number(rows[i][4]) || 0 };
+    }
+  }
+  return { mataUang: "Rp", saldo: 0 };
 }
 
-/* =========================
-   CATEGORY LOGIC
-========================= */
-function categorizeAccount(accountName) {
-  const name = accountName.toLowerCase().trim();
+async function appendRows(values) {
+  const sheets = sheetsClient();
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: "Sheet1!A:O",
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values },
+  });
+}
 
-  // 🪙 BTC/Bitcoin → Hold (long-term investment)
-  if (/\b(btc|bitcoin)\b/.test(name) && !/\busdt\b/.test(name)) {
-    return "hold";
+async function safeEdit(ctx, chatId, messageId, text, markup) {
+  try {
+    return await ctx.api.editMessageText(chatId, messageId, text, {
+      reply_markup: markup,
+    });
+  } catch (err) {
+    if (err.description?.includes("message is not modified")) return;
+    console.error("❌ editMessageText error:", err);
+    throw err;
   }
-
-  // 🎮 USDT → Trading (BTCUSDT spot only)
-  if (/\busdt\b/.test(name)) {
-    return "trading";
-  }
-
-  // 💧 Others → Liquid
-  return "liquid";
 }
 
 /* =========================
    COMMAND
 ========================= */
 export default {
-  name: "balance",
+  name: "selli",
 
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
-    const text = ctx.message?.text || "";
-    const isAll = text.includes("-a");
-    const isGoals = text.includes("-goals");
-
-    // ── DEFAULT: List accounts (original behavior) ──
-    if (!isGoals) {
-      const rows = isAll
-        ? await getAccountsFormatted()
-        : await getAccountsNormal();
-
-      if (!rows.length) {
-        return ctx.reply("Tidak ada data akun.");
-      }
-
-      let totalRp = 0;
-
-      const accountMessages = rows.map(([akun, rawSaldo]) => {
-        let saldo;
-        if (isAll) {
-          saldo = parseRp(rawSaldo);
-        } else {
-          saldo = Number(rawSaldo);
-          if (!rawSaldo || isNaN(saldo)) saldo = 0;
-        }
-        totalRp += saldo;
-        return `🧾 Account : ${akun}\n💰 Balance: ${formatRp(saldo)}`;
-      });
-
-      const message = `
-📊 Account Balances
-
-${accountMessages.join("\n\n")}
-
-━━━━━━━━━━━━
-🔢 Total : ${formatRp(totalRp)}
-📅 Last updated: ${getJakartaTime()}
-`.trim();
-
-      return ctx.reply(message);
+    const args = ctx.message?.text?.trim().split(/\s+/).slice(1);
+    if (args.length < 4) {
+      return ctx.reply(
+        "❌ Format salah.\n\nGunakan: `/selli <akunKeluar> <akunMasuk> <jumlahKeluar> <jumlahMasuk>`\nContoh: `/selli Dana Wallet 20K 22K`",
+        { parse_mode: "Markdown" }
+      );
     }
 
-    // ── GOALS MODE: Summary view ──
-    const TARGET = 10_000_000;
+    const [akunKeluarRaw, akunMasukRaw, keluarRaw, masukRaw] = args;
+    const akunKeluar = findAkun(akunKeluarRaw);
+    const akunMasuk = findAkun(akunMasukRaw);
 
-    // Fetch both ranges to ensure we capture USDT/BTC even if formatted differently
-    const [rowsNormal, rowsFormatted] = await Promise.all([
-      getAccountsNormal(),
-      getAccountsFormatted(),
-    ]);
+    if (!akunKeluar || !akunMasuk) {
+      return ctx.reply(`❌ Akun tidak valid.\nPilihan: ${OPTIONS.akun.join(", ")}`);
+    }
+    if (akunKeluar === akunMasuk) {
+      return ctx.reply("❌ Akun masuk dan keluar tidak boleh sama.");
+    }
 
-    // Merge & dedupe by account name (prefer formatted if exists)
-    const accountMap = new Map();
-    [...rowsNormal, ...rowsFormatted].forEach(([akun, rawSaldo]) => {
-      if (!akun) return;
-      const key = akun.toLowerCase().trim();
-      // Prefer formatted value if available and parseable
-      if (!accountMap.has(key) || rawSaldo?.includes("Rp")) {
-        accountMap.set(key, [akun, rawSaldo]);
+    const jumlahKeluar = parseAmount(keluarRaw);
+    const jumlahMasuk = parseAmount(masukRaw);
+
+    if (jumlahKeluar === null || jumlahMasuk === null) {
+      return ctx.reply("❌ Format jumlah salah.\nGunakan suffix: K, rb, ribu, jt, juta");
+    }
+
+    const rows = await fetchAllRows();
+    const keluarInfo = getLastSaldo(rows, akunKeluar);
+    const masukInfo = getLastSaldo(rows, akunMasuk);
+
+    if (keluarInfo.saldo < jumlahKeluar) {
+      return ctx.reply(`❌ Saldo ${akunKeluar} tidak mencukupi.\nTersedia: ${formatRupiah(keluarInfo.saldo)}`);
+    }
+
+    const saldoKeluarSebelum = keluarInfo.saldo;
+    const saldoKeluarSesudah = saldoKeluarSebelum - jumlahKeluar;
+    const saldoMasukSebelum = masukInfo.saldo;
+    const saldoMasukSesudah = saldoMasukSebelum + jumlahMasuk;
+    const keuntungan = jumlahMasuk - jumlahKeluar;
+
+    // 🔥 Format sesuai request
+    const deskripsi = `${akunKeluar} ${keluarRaw}`;
+    const tag = `#${akunKeluar.toLowerCase()}`;
+    const catatan = "-";
+
+    const msg = await ctx.reply(
+      `🧾 PREVIEW TRANSAKSI
+
+📝 Deskripsi: ${deskripsi}
+💸 Keluar: ${formatRupiah(jumlahKeluar)} dari ${akunKeluar}
+💰 Masuk: ${formatRupiah(jumlahMasuk)} ke ${akunMasuk}
+📈 Keuntungan: ${formatRupiah(keuntungan)}
+
+${formatSaldoLine(akunKeluar, saldoKeluarSebelum, saldoKeluarSesudah, true)}
+${formatSaldoLine(akunMasuk, saldoMasukSebelum, saldoMasukSesudah, false)}
+
+Tag: ${tag} | Catatan: ${catatan}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "✅ Simpan", callback_data: "selli:save:ok" }],
+            [{ text: "❌ Batal", callback_data: "selli:cancel" }],
+          ],
+        },
       }
+    );
+
+    states.set(ctx.from.id, {
+      chatId: ctx.chat.id,
+      messageId: msg.message_id,
+      akunKeluar,
+      akunMasuk,
+      jumlahKeluar,
+      jumlahMasuk,
+      deskripsi,
+      tag,
+      catatan,
+      saldoKeluarSebelum,
+      saldoKeluarSesudah,
+      saldoMasukSebelum,
+      saldoMasukSesudah,
     });
+  },
 
-    let liquid = 0;
-    let trading = 0;
-    let hold = 0;
+  async handleCallback(ctx) {
+    await ctx.answerCallbackQuery().catch(() => {});
+    if (!ctx.callbackQuery?.data?.startsWith("selli:")) return;
 
-    for (const [akun, rawSaldo] of accountMap.values()) {
-      let saldo;
-      if (rawSaldo?.includes("Rp")) {
-        saldo = parseRp(rawSaldo);
-      } else {
-        saldo = Number(rawSaldo);
-        if (!rawSaldo || isNaN(saldo)) saldo = 0;
-      }
+    const state = states.get(ctx.from.id);
+    if (!state) return;
 
-      const category = categorizeAccount(akun);
-      if (category === "hold") hold += saldo;
-      else if (category === "trading") trading += saldo;
-      else liquid += saldo;
+    const edit = (text, markup) =>
+      safeEdit(ctx, state.chatId, state.messageId, text, markup);
+    const data = ctx.callbackQuery.data;
+
+    if (data === "selli:cancel") {
+      states.delete(ctx.from.id);
+      return edit("❌ Transaksi dibatalkan.");
     }
 
-    const total = liquid + trading + hold;
-    const remaining = Math.max(0, TARGET - total);
+    if (data === "selli:save:ok") {
+      const now = new Date().toISOString();
 
-    const totalIcon = total >= TARGET ? "✅" : "▲";
-    const liquidIcon = "🔄";
-    const holdIcon = "▬";
+      const entries = [
+        [
+          "Pengeluaran", "Usaha", "Penjualan", state.deskripsi, state.jumlahKeluar, "Rp",
+          state.akunKeluar, "Transfer", state.saldoKeluarSebelum, state.saldoKeluarSesudah,
+          state.tag, state.catatan, now, now,
+        ],
+        [
+          "Pemasukan", "Usaha", "Penjualan", state.deskripsi, state.jumlahMasuk, "Rp",
+          state.akunMasuk, "Cash", state.saldoMasukSebelum, state.saldoMasukSesudah,
+          state.tag, state.catatan, now, now,
+        ],
+      ];
 
-    // Progress calculation
-    const progressPercent = Math.min(100, (total / TARGET) * 100);
-    const progressStr = progressPercent.toFixed(1) + '%';
-    const filledBlocks = Math.min(10, Math.round(progressPercent / 10));
-    const progressBar = '▰'.repeat(filledBlocks) + '▱'.repeat(10 - filledBlocks);
+      await appendRows(entries);
+      states.delete(ctx.from.id);
 
-    const message = `
-🎯 10 JUTA PERTAMA
-Progress: ${progressBar} ${progressStr}
-Total: ${formatRp(total)} ${totalIcon}
-├─ 💧 Liquid: ${formatRp(liquid)} ${liquidIcon}
-├─ 🎮 Trading: ${formatRp(trading)}
-└─ 🪙 BTC Hold: ${formatRp(hold)} ${holdIcon}
+      const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
+      const warning = keuntungan < 0 ? "\n⚠️ Transaksi rugi." : "";
 
-📅 ${getJakartaDate()} | Sisa: ${formatRp(remaining)}
-`.trim();
+      const saldoLines = [
+        formatSaldoLine(state.akunKeluar, state.saldoKeluarSebelum, state.saldoKeluarSesudah, true),
+        formatSaldoLine(state.akunMasuk, state.saldoMasukSebelum, state.saldoMasukSesudah, false),
+      ].join("\n");
 
-    await ctx.reply(message);
+      const successText = `✅ Transaksi berhasil disimpan!
+
+🧾 DETAIL:
+📝 Deskripsi: ${state.deskripsi}
+💸 Keluar: ${formatRupiah(state.jumlahKeluar)} dari ${state.akunKeluar}
+💰 Masuk: ${formatRupiah(state.jumlahMasuk)} ke ${state.akunMasuk}
+📈 Keuntungan: ${formatRupiah(keuntungan)}
+
+${saldoLines}
+
+Tag: ${state.tag} | Catatan: ${state.catatan}${warning}`;
+
+      return edit(successText);
+    }
   },
 };
