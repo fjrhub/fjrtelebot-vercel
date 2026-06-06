@@ -193,8 +193,15 @@ ${accountMessages.join("\n\n")}
     const liquidIcon = "🔄";
     const holdIcon = "▬";
 
+    // Progress calculation
+    const progressPercent = Math.min(100, (total / TARGET) * 100);
+    const progressStr = progressPercent.toFixed(1) + '%';
+    const filledBlocks = Math.min(10, Math.round(progressPercent / 10));
+    const progressBar = '▰'.repeat(filledBlocks) + '▱'.repeat(10 - filledBlocks);
+
     const message = `
 🎯 10 JUTA PERTAMA
+Progress: ${progressBar} ${progressStr}
 Total: ${formatRp(total)} ${totalIcon}
 ├─ 💧 Liquid: ${formatRp(liquid)} ${liquidIcon}
 ├─ 🎮 Trading: ${formatRp(trading)} (Risk: ${formatRp(riskAmount)})
