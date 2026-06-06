@@ -189,7 +189,6 @@ ${accountMessages.join("\n\n")}
 
     const totalIcon = total >= TARGET ? "✅" : "▲";
     const liquidIcon = "🔄";
-    const holdIcon = "▬";
 
     // Progress calculation
     const progressPercent = Math.min(100, (total / TARGET) * 100);
@@ -202,8 +201,8 @@ ${accountMessages.join("\n\n")}
 Progress: ${progressBar} ${progressStr}
 Total: ${formatRp(total)} ${totalIcon}
 ├─ 💧 Liquid: ${formatRp(liquid)} ${liquidIcon}
-├─ 🎮 Trading: ${formatRp(trading)}
-└─ 🪙 BTC Hold: ${formatRp(hold)} ${holdIcon}
+├─ 📈 Trading: ${formatRp(trading)}
+└─ 💎 Hold: ${formatRp(hold)}
 
 📅 ${getJakartaDate()} | Sisa: ${formatRp(remaining)}
 `.trim();
