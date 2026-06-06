@@ -147,7 +147,6 @@ ${accountMessages.join("\n\n")}
 
     // ── GOALS MODE: Summary view ──
     const TARGET = 10_000_000;
-    const TRADING_RISK_PERCENT = 0.01;
 
     // Fetch both ranges to ensure we capture USDT/BTC even if formatted differently
     const [rowsNormal, rowsFormatted] = await Promise.all([
@@ -187,7 +186,6 @@ ${accountMessages.join("\n\n")}
 
     const total = liquid + trading + hold;
     const remaining = Math.max(0, TARGET - total);
-    const riskAmount = Math.round(trading * TRADING_RISK_PERCENT);
 
     const totalIcon = total >= TARGET ? "✅" : "▲";
     const liquidIcon = "🔄";
@@ -204,7 +202,7 @@ ${accountMessages.join("\n\n")}
 Progress: ${progressBar} ${progressStr}
 Total: ${formatRp(total)} ${totalIcon}
 ├─ 💧 Liquid: ${formatRp(liquid)} ${liquidIcon}
-├─ 🎮 Trading: ${formatRp(trading)} (Risk: ${formatRp(riskAmount)})
+├─ 🎮 Trading: ${formatRp(trading)}
 └─ 🪙 BTC Hold: ${formatRp(hold)} ${holdIcon}
 
 📅 ${getJakartaDate()} | Sisa: ${formatRp(remaining)}
