@@ -156,19 +156,18 @@ export default {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
     const rows = await fetchAllRows();
+    const args = (ctx.message.text || "").split(" ").slice(1);
+    const nominalInput = args[0];
+    const parsedAmount = parseInputAmount(nominalInput);
 
-    const msg = await ctx.reply("Masukkan jumlah:", {
-      reply_markup: kbText(false),
-    });
+    const msg = await ctx.reply("⏳ Memproses...");
 
-    states.set(ctx.from.id, {
-      step: "jumlah", // 🔥 Langsung ke step jumlah
+    const state = {
+      step: "jumlah",
       history: [],
       rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
-
-      // 🔥 PRESET OTOMATIS
       jenis: "Pemasukan",
       kategori: "Investasi",
       subKategori: "Bunga Bank",
@@ -177,7 +176,30 @@ export default {
       metode: "Transfer",
       tag: "#bunga",
       catatan: "-",
-    });
+    };
+
+    if (parsedAmount > 0) {
+      state.jumlah = parsedAmount;
+      const { saldo, mataUang } = getLastFromCache(rows, state.akun);
+      state.saldoSebelum = saldo;
+      state.mataUang = mataUang;
+      state.saldoSesudah = saldo + state.jumlah;
+      state.step = "confirm";
+    }
+
+    states.set(ctx.from.id, state);
+
+    if (state.step === "confirm") {
+      return this.render(ctx, state);
+    }
+
+    return safeEdit(
+      ctx,
+      state.chatId,
+      state.messageId,
+      `Masukkan jumlah:\n\n💡 Otomatis:\nDeskripsi: ${state.deskripsi}\nAkun: ${state.akun}\nTag: ${state.tag}`,
+      kbText(false),
+    );
   },
 
   async handleCallback(ctx) {
@@ -198,12 +220,10 @@ export default {
     }
 
     if (data === "bunga:back") {
-      // 🔥 Karena step awal sekarang "jumlah", back hanya valid jika history ada
       if (state.history.length > 0) {
         state.step = state.history.pop();
         return this.render(ctx, state);
       }
-      // Jika di step jumlah dan back ditekan, anggap sebagai cancel
       states.delete(ctx.from.id);
       return edit("❌ Dibatalkan.");
     }
@@ -235,7 +255,6 @@ export default {
     await ctx.deleteMessage().catch(() => {});
     state.history.push(state.step);
 
-    // 🔥 Step "deskripsi" dihapus, langsung handle "jumlah"
     if (state.step === "jumlah") {
       state.jumlah = parseInputAmount(ctx.message.text);
 
@@ -258,7 +277,6 @@ export default {
       safeEdit(ctx, state.chatId, state.messageId, text, markup);
 
     switch (state.step) {
-      // 🔥 Case "deskripsi" dihapus
       case "jumlah":
         return edit(
           `Masukkan jumlah:\n\n💡 Otomatis:\nDeskripsi: ${state.deskripsi}\nAkun: ${state.akun}\nTag: ${state.tag}`,
