@@ -82,8 +82,8 @@ async function appendRows(values) {
 ========================= */
 const kbConfirm = () => ({
   inline_keyboard: [
-    [{ text: "✅ Simpan", callback_data: "transfer:save:ok" }],
-    [{ text: "❌ Cancel", callback_data: "transfer:cancel" }],
+    [{ text: "✅ Simpan", callback_data: "transferi:save:ok" }],
+    [{ text: "❌ Cancel", callback_data: "transferi:cancel" }],
   ],
 });
 
@@ -184,7 +184,7 @@ export default {
 
     const data = ctx.callbackQuery.data;
 
-    if (data === "transfer:cancel" || data === "transfer:back") {
+    if (data === "transferi:cancel" || data === "transferi:back") {
       states.delete(ctx.from.id);
       return edit("❌ Transfer dibatalkan.", { inline_keyboard: [] });
     }
