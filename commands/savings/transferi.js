@@ -91,18 +91,18 @@ const kbConfirm = () => ({
    COMMAND
 ========================= */
 export default {
-  name: "transfer",
+  name: "transferi",
 
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
     const text = ctx.message.text;
-    // Match format: /transfer <asal> <tujuan> <jumlah>[/<jumlah_terima>]
-    // Mendukung optional bot name seperti /transfer@botname
-    const match = text.match(/^\/transfer(?:@\S+)?\s+(\S+)\s+(\S+)\s+(.+)$/i);
+    // Match format: /transferi <asal> <tujuan> <jumlah>[/<jumlah_terima>]
+    // Mendukung optional bot name seperti /transferi@botname
+    const match = text.match(/^\/transferi(?:@\S+)?\s+(\S+)\s+(\S+)\s+(.+)$/i);
     
     if (!match) {
-      return ctx.reply("Format salah.\nGunakan: /transfer <asal> <tujuan> <jumlah>[/<jumlah_terima>]\nContoh: /transfer Seabank Dana 1juta/500k");
+      return ctx.reply("Format salah.\nGunakan: /transferi <asal> <tujuan> <jumlah>[/<jumlah_terima>]\nContoh: /transferi Seabank Dana 1juta/500k");
     }
 
     const [, asalStr, tujuanStr, amountStr] = match;
