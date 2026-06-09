@@ -98,6 +98,9 @@ function calculateProfit(rows, startDate, endDate) {
     const jumlah = Number(r[4]) || 0;
     const createdAt = new Date(r[12]);
 
+    // ✅ Skip baris jika format tanggal tidak valid
+    if (isNaN(createdAt.getTime())) return; 
+    
     if (kategori !== "Usaha" || subKategori !== "Penjualan") return;
     if (startDate && createdAt < startDate) return;
     if (endDate && createdAt > endDate) return;
@@ -182,7 +185,7 @@ export default {
     if (relevantRows.length > 0) {
       const dates = relevantRows
         .map(r => new Date(r[12]))
-        .filter(d => !isNaN(d));
+        .filter(d => !isNaN(d.getTime())); // ✅ Validasi tanggal lebih ketat
       
       if (dates.length > 0) {
         const minDate = new Date(Math.min(...dates));
@@ -234,11 +237,18 @@ export default {
         txt += `💰 Profit : ${formatRupiah(data.profit)} | ~${margin}${emoji}\n\n`;
       });
 
-      // Kirim sebagai file .txt
-      return ctx.replyWithDocument(
-        { source: Buffer.from(txt, "utf-8") },
-        { filename: "profit-all.txt" }
-      );
+      // ✅ Kirim sebagai file .txt
+      // Melewatkan Buffer langsung agar kompatibel dengan Telegraf v3 & v4
+      return ctx.replyWithDocument(Buffer.from(txt, "utf-8"));
+      
+      /* 
+      // CATATAN: Jika Anda menggunakan Telegraf v4 dan ingin menetapkan nama file spesifik (profit-all.txt),
+      // gunakan Input.fromBuffer. Pastikan menambahkan import { Input } from "telegraf"; di baris paling atas:
+      
+      import { Input } from "telegraf";
+      // ...
+      return ctx.replyWithDocument(Input.fromBuffer(Buffer.from(txt, "utf-8"), "profit-all.txt"));
+      */
     }
 
     // ✅ LOGIKA NORMAL /profit
