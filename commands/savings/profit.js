@@ -109,6 +109,56 @@ function calculateProfit(rows, startDate, endDate) {
   return { masuk, keluar, profit: masuk - keluar };
 }
 
+function generatePeriods(nowWIB, earliestDate) {
+  const months = [];
+  const weeks = [];
+  const days = [];
+  const optionsMonth = { month: "long", year: "2-digit" };
+  const optionsDate = { day: "numeric", month: "numeric", year: "2-digit" };
+
+  // Months
+  let currentMonthStart = startOfMonth(earliestDate);
+  const finalMonthStart = startOfMonth(nowWIB);
+  while (currentMonthStart <= finalMonthStart) {
+    const monthEnd = endOfMonth(currentMonthStart);
+    months.push({
+      label: currentMonthStart.toLocaleDateString("id-ID", optionsMonth),
+      start: new Date(currentMonthStart),
+      end: monthEnd > nowWIB ? new Date(nowWIB) : new Date(monthEnd)
+    });
+    currentMonthStart.setMonth(currentMonthStart.getMonth() + 1);
+  }
+
+  // Weeks
+  let currentWeekStart = startOfWeek(earliestDate);
+  const finalWeekStart = startOfWeek(nowWIB);
+  while (currentWeekStart <= finalWeekStart) {
+    const weekEnd = new Date(currentWeekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    weeks.push({
+      label: `${currentWeekStart.toLocaleDateString("id-ID", optionsDate)} - ${weekEnd.toLocaleDateString("id-ID", optionsDate)}`,
+      start: new Date(currentWeekStart),
+      end: weekEnd > nowWIB ? new Date(nowWIB) : new Date(weekEnd)
+    });
+    currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+  }
+
+  // Days
+  let currentDay = startOfDay(earliestDate);
+  const finalDay = startOfDay(nowWIB);
+  while (currentDay <= finalDay) {
+    days.push({
+      label: currentDay.toLocaleDateString("id-ID", optionsDate),
+      start: new Date(currentDay),
+      end: endOfDay(currentDay) > nowWIB ? new Date(nowWIB) : endOfDay(currentDay)
+    });
+    currentDay.setDate(currentDay.getDate() + 1);
+  }
+
+  return { months, weeks, days };
+}
+
 /* =========================
    COMMAND
 ========================= */
@@ -121,9 +171,14 @@ export default {
     const rows = await fetchTransactions();
     if (!rows.length) return ctx.reply("📭 Belum ada data transaksi.");
 
+    const args = ctx.message?.text?.split(" ") || [];
+    const isAll = args.includes("-a");
+
     // ✅ Hitung rentang tanggal untuk SEMUA WAKTU
     const relevantRows = rows.filter(r => r[1] === "Usaha" && r[2] === "Penjualan");
     let allTimeDateRange = "";
+    let earliestDate = new Date();
+    
     if (relevantRows.length > 0) {
       const dates = relevantRows
         .map(r => new Date(r[12]))
@@ -134,10 +189,59 @@ export default {
         const maxDate = new Date(Math.max(...dates));
         const opts = { day: "numeric", month: "numeric", year: "2-digit" };
         allTimeDateRange = ` (${minDate.toLocaleDateString("id-ID", opts)} - ${maxDate.toLocaleDateString("id-ID", opts)})`;
+        earliestDate = minDate;
       }
     }
 
     const nowWIB = getWIBDate();
+
+    // ✅ LOGIKA UNTUK /profit -a (Kirim sebagai .txt)
+    if (isAll) {
+      const periods = generatePeriods(nowWIB, earliestDate);
+      let txt = `📊 RINGKASAN PROFIT USAHA PULSA (SEMUA WAKTU)\n`;
+      txt += `🕒 Rentang:${allTimeDateRange}\n\n`;
+
+      txt += "=== 📅 BULAN ===\n";
+      periods.months.forEach(p => {
+        const data = calculateProfit(rows, p.start, p.end);
+        const margin = formatMargin(data.profit, data.masuk);
+        const emoji = getMarginEmoji(data.profit, data.masuk);
+        txt += `[${p.label}]\n`;
+        txt += `🟢 Pemasukan : ${formatRupiah(data.masuk)}\n`;
+        txt += `🔴 Pengeluaran : ${formatRupiah(data.keluar)}\n`;
+        txt += `💰 Profit : ${formatRupiah(data.profit)} | ~${margin}${emoji}\n\n`;
+      });
+
+      txt += "\n=== 📆 MINGGU ===\n";
+      periods.weeks.forEach(p => {
+        const data = calculateProfit(rows, p.start, p.end);
+        const margin = formatMargin(data.profit, data.masuk);
+        const emoji = getMarginEmoji(data.profit, data.masuk);
+        txt += `[${p.label}]\n`;
+        txt += `🟢 Pemasukan : ${formatRupiah(data.masuk)}\n`;
+        txt += `🔴 Pengeluaran : ${formatRupiah(data.keluar)}\n`;
+        txt += `💰 Profit : ${formatRupiah(data.profit)} | ~${margin}${emoji}\n\n`;
+      });
+
+      txt += "\n=== 🗓️ HARI ===\n";
+      periods.days.forEach(p => {
+        const data = calculateProfit(rows, p.start, p.end);
+        const margin = formatMargin(data.profit, data.masuk);
+        const emoji = getMarginEmoji(data.profit, data.masuk);
+        txt += `[${p.label}]\n`;
+        txt += `🟢 Pemasukan : ${formatRupiah(data.masuk)}\n`;
+        txt += `🔴 Pengeluaran : ${formatRupiah(data.keluar)}\n`;
+        txt += `💰 Profit : ${formatRupiah(data.profit)} | ~${margin}${emoji}\n\n`;
+      });
+
+      // Kirim sebagai file .txt
+      return ctx.replyWithDocument(
+        { source: Buffer.from(txt, "utf-8") },
+        { filename: "profit-all.txt" }
+      );
+    }
+
+    // ✅ LOGIKA NORMAL /profit
     const startToday = startOfDay(nowWIB);
     const endToday = endOfDay(nowWIB);
 
