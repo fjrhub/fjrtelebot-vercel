@@ -159,12 +159,12 @@ async function saveTransaction(ctx, state) {
 
   const entries = [
     [
-      "Pengeluaran", "Usaha", "Tarik", state.deskripsi,
+      "Pengeluaran", "Usaha", "Penjualan", state.deskripsi,
       state.jumlahKeluar, "Rp", state.akunKeluar, "Transfer",
       saldoKeluarSebelum, saldoKeluarSesudah, state.tag, state.catatan, now, now,
     ],
     [
-      "Pemasukan", "Usaha", "Tarik", state.deskripsi,
+      "Pemasukan", "Usaha", "Penjualan", state.deskripsi,
       state.jumlahMasuk, "Rp", state.akunMasuk, "Cash",
       saldoMasukSebelum, saldoMasukSesudah, state.tag, state.catatan, now, now,
     ],
