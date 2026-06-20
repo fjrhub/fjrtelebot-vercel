@@ -20,17 +20,63 @@ const states = new Map();
    UTIL
 ========================= */
 
-// 🔥 Fungsi baru untuk parse angka yang support singkatan (K, RB, JT, dll)
+// 🔥 FUNGSI DIPERBAIKI: Support desimal (1.2) & ribuan (1.000.000) secara otomatis
 const parseAmount = (v) => {
   const str = String(v).trim();
-  const match = str.match(/(\d+(?:[.,]\d+)?)\s*(k|rb|ribu|jt|juta)?/i);
+  // Regex diperbaiki agar bisa menangkap banyak titik/koma (contoh: 1.000.000)
+  const match = str.match(/(\d+(?:[.,]\d+)*)\s*(k|rb|ribu|jt|juta|m|miliar)?/i);
   if (!match) return NaN;
 
-  let amount = parseFloat(match[1].replace(/\./g, "").replace(",", "."));
+  let numStr = match[1];
   const suffix = match[2]?.toLowerCase();
+
+  // Logika penentuan pemisah desimal vs ribuan
+  let decSep = null;
+  if (numStr.includes('.') && numStr.includes(',')) {
+    // Jika ada keduanya, yang posisi terakhir adalah desimal
+    decSep = numStr.lastIndexOf('.') > numStr.lastIndexOf(',') ? '.' : ',';
+  } else if (numStr.includes('.')) {
+    const dotCount = (numStr.match(/\./g) || []).length;
+    if (dotCount > 1) {
+      decSep = ','; // Titik adalah ribuan (contoh: 1.000.000)
+    } else {
+      const parts = numStr.split('.');
+      // Jika digit setelah titik bukan 3, maka itu desimal (contoh: 1.2, 10.5)
+      if (parts[1].length !== 3) {
+        decSep = '.';
+      } else {
+        decSep = ','; // Titik adalah ribuan (contoh: 1.500)
+      }
+    }
+  } else if (numStr.includes(',')) {
+    const commaCount = (numStr.match(/,/g) || []).length;
+    if (commaCount > 1) {
+      decSep = '.'; // Koma adalah ribuan (contoh: 1,000,000)
+    } else {
+      const parts = numStr.split(',');
+      if (parts[1].length !== 3) {
+        decSep = ','; // Koma adalah desimal (contoh: 1,2)
+      } else {
+        decSep = '.'; // Koma adalah ribuan (contoh: 1,500)
+      }
+    }
+  } else {
+    decSep = '.'; // Tidak ada pemisah
+  }
+
+  // Normalisasi string: hapus pemisah ribuan, ganti pemisah desimal dengan titik
+  let normalizedStr = numStr;
+  if (decSep === ',') {
+    normalizedStr = normalizedStr.replace(/\./g, '').replace(',', '.');
+  } else {
+    normalizedStr = normalizedStr.replace(/,/g, '');
+  }
+
+  let amount = parseFloat(normalizedStr);
 
   if (["k", "rb", "ribu"].includes(suffix)) amount *= 1000;
   if (["jt", "juta"].includes(suffix)) amount *= 1000000;
+  if (["m", "miliar"].includes(suffix)) amount *= 1000000000;
 
   return Math.round(amount);
 };
