@@ -1,146 +1,142 @@
 import { google } from "googleapis";
 
 /* =========================
-   CONFIG & CONSTANTS
-========================= */
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
-const OWNER_ID = Number(process.env.OWNER_ID);
-const SHEET_RANGE_DATA = "Sheet1!F2:J"; // Untuk membaca saldo terakhir
-const SHEET_RANGE_APPEND = "Sheet1!A:O"; // Untuk menulis transaksi
-
-/* =========================
-   STATE MANAGEMENT
+   STATE
 ========================= */
 const states = new Map();
 
-const getState = (userId) => states.get(userId);
-const setState = (userId, state) => states.set(userId, state);
-const clearState = (userId) => states.delete(userId);
-
 /* =========================
-   UTILITIES
+   UTIL
 ========================= */
 const parseInputAmount = (text) => {
   if (!text) return 0;
-  const cleaned = String(text).replace(/\./g, "").replace(",", ".");
-  const num = Number(cleaned);
-  return isNaN(num) ? 0 : num;
+  const cleanedText = String(text).replace(/\./g, "").replace(",", ".");
+  return Number(cleanedText);
 };
 
 const amountToSheet = (amount, currency) => {
-  const val = Number(amount);
-  return currency === "USDT" ? Math.round(val * 1000) : Math.round(val);
+  if (currency === "USDT") {
+    return Math.round(Number(amount) * 1000);
+  }
+  return Math.round(Number(amount));
 };
 
 const formatAmount = (amount, currency) => {
-  const val = Number(amount);
   if (currency === "USDT") {
-    return `${val.toLocaleString("id-ID", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} USDT`;
+    return `${Number(amount).toLocaleString("id-ID", {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    })} USDT`;
   }
-  return `Rp${new Intl.NumberFormat("id-ID").format(Math.round(val))}`;
+  return `Rp${new Intl.NumberFormat("id-ID").format(Math.round(amount))}`;
 };
 
 const sheetToAmount = (value, currency) => {
-  const num = Number(value || 0);
-  return currency === "USDT" ? num / 1000 : num;
+  if (currency === "USDT") return Number(value || 0) / 1000;
+  return Number(value || 0);
 };
 
 /* =========================
-   GOOGLE SHEETS SERVICE
+   SAFE EDIT
 ========================= */
-let sheetsInstance = null;
-
-const getSheetsClient = () => {
-  if (!sheetsInstance) {
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        type: "service_account",
-        project_id: process.env.GOOGLE_PROJECT_ID,
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-        private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-      },
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-    sheetsInstance = google.sheets({ version: "v4", auth });
-  }
-  return sheetsInstance;
-};
-
-const fetchLastBalance = async (akun) => {
-  try {
-    const sheets = getSheetsClient();
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: SHEET_RANGE_DATA,
-    });
-    
-    const rows = res.data.values || [];
-    // Cari dari bawah ke atas untuk mendapatkan entri terbaru
-    for (let i = rows.length - 1; i >= 0; i--) {
-      if (rows[i][1] === akun) { // Kolom F (index 1 dalam range F:J) adalah Akun
-        const mataUang = rows[i][0] || "Rp"; // Kolom F index 0 adalah Mata Uang
-        const saldo = sheetToAmount(rows[i][4], mataUang); // Kolom J (index 4) adalah Saldo
-        return { mataUang, saldo };
-      }
-    }
-  } catch (error) {
-    console.error("❌ Error fetching balance:", error);
-  }
-  return { saldo: 0, mataUang: "Rp" };
-};
-
-const appendTransaction = async (data) => {
-  const sheets = getSheetsClient();
-  const now = new Date().toISOString();
-
-  const rowValues = [
-    data.jenis,
-    data.kategori,
-    data.subKategori,
-    data.deskripsi,
-    amountToSheet(data.jumlah, data.mataUang),
-    data.mataUang,
-    data.akun,
-    data.metode,
-    amountToSheet(data.saldoSebelum, data.mataUang),
-    amountToSheet(data.saldoSesudah, data.mataUang),
-    data.tag,
-    data.catatan,
-    now,
-    now,
-  ];
-
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID,
-    range: SHEET_RANGE_APPEND,
-    valueInputOption: "USER_ENTERED",
-    requestBody: { values: [rowValues] },
-  });
-};
-
-/* =========================
-   TELEGRAM HELPERS
-========================= */
-const safeEdit = async (ctx, chatId, messageId, text, markup) => {
+async function safeEdit(ctx, chatId, messageId, text, markup) {
   try {
     return await ctx.api.editMessageText(chatId, messageId, text, {
       reply_markup: markup,
-      parse_mode: "HTML", // Tambahkan parse mode jika perlu formatting
     });
   } catch (err) {
-    if (err.description?.includes("message is not modified")) return;
-    console.error("❌ Edit message error:", err);
+    if (err.description?.includes("message is not modified")) {
+      return;
+    }
+    console.error("❌ editMessageText error:", err);
     throw err;
   }
+}
+
+/* =========================
+   GOOGLE SHEETS
+========================= */
+function sheetsClient() {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      type: "service_account",
+      project_id: process.env.GOOGLE_PROJECT_ID,
+      client_email: process.env.GOOGLE_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    },
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+  return google.sheets({ version: "v4", auth });
+}
+
+async function fetchAllRows() {
+  const sheets = sheetsClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: "Sheet1!F2:J",
+  });
+  return res.data.values || [];
+}
+
+function getLastFromCache(rows, akun) {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i][1] === akun) {
+      const mataUang = rows[i][0] || "Rp";
+      const saldo = sheetToAmount(rows[i][4], mataUang);
+      return { mataUang, saldo };
+    }
+  }
+  return { saldo: 0, mataUang: "Rp" };
+}
+
+async function appendTransaction(data) {
+  const sheets = sheetsClient();
+  const now = new Date().toISOString();
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: "Sheet1!A:O",
+    valueInputOption: "USER_ENTERED",
+    requestBody: {
+      values: [
+        [
+          data.jenis,
+          data.kategori,
+          data.subKategori,
+          data.deskripsi,
+          amountToSheet(data.jumlah, data.mataUang),
+          data.mataUang,
+          data.akun,
+          data.metode,
+          amountToSheet(data.saldoSebelum, data.mataUang),
+          amountToSheet(data.saldoSesudah, data.mataUang),
+          data.tag,
+          data.catatan,
+          now,
+          now,
+        ],
+      ],
+    },
+  });
+}
+
+/* =========================
+   KEYBOARD
+========================= */
+const kbText = (showBack = false) => {
+  if (showBack) {
+    return {
+      inline_keyboard: [
+        [{ text: "⬅️ Back", callback_data: "bunga:back" }],
+      ],
+    };
+  }
+  return {
+    inline_keyboard: [
+      [{ text: "❌ Cancel", callback_data: "bunga:cancel" }],
+    ],
+  };
 };
-
-const kbCancel = () => ({
-  inline_keyboard: [[{ text: "❌ Cancel", callback_data: "bunga:cancel" }]],
-});
-
-const kbBack = () => ({
-  inline_keyboard: [[{ text: "⬅️ Back", callback_data: "bunga:back" }]],
-});
 
 const kbConfirm = () => ({
   inline_keyboard: [
@@ -151,26 +147,27 @@ const kbConfirm = () => ({
 });
 
 /* =========================
-   MAIN MODULE
+   COMMAND
 ========================= */
 export default {
   name: "bunga",
 
   async execute(ctx) {
-    if (ctx.from?.id !== OWNER_ID) return;
+    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
+    const rows = await fetchAllRows();
     const args = (ctx.message.text || "").split(" ").slice(1);
     const nominalInput = args[0];
     const parsedAmount = parseInputAmount(nominalInput);
 
     const msg = await ctx.reply("⏳ Memproses...");
 
-    const initialState = {
-      step: parsedAmount > 0 ? "confirm" : "jumlah",
+    const state = {
+      step: "jumlah",
       history: [],
+      rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
-      // Default values
       jenis: "Pemasukan",
       kategori: "Investasi",
       subKategori: "Bunga Bank",
@@ -179,38 +176,46 @@ export default {
       metode: "Transfer",
       tag: "#bunga",
       catatan: "-",
-      jumlah: parsedAmount,
-      mataUang: "Rp",
-      saldoSebelum: 0,
-      saldoSesudah: 0,
     };
 
-    setState(ctx.from.id, initialState);
-
-    if (initialState.step === "confirm") {
-      const { saldo, mataUang } = await fetchLastBalance(initialState.akun);
-      initialState.mataUang = mataUang;
-      initialState.saldoSebelum = saldo;
-      initialState.saldoSesudah = saldo + initialState.jumlah;
+    if (parsedAmount > 0) {
+      state.jumlah = parsedAmount;
+      const { saldo, mataUang } = getLastFromCache(rows, state.akun);
+      state.saldoSebelum = saldo;
+      state.mataUang = mataUang;
+      state.saldoSesudah = saldo + state.jumlah;
+      state.step = "confirm";
     }
 
-    return this.render(ctx, getState(ctx.from.id));
+    states.set(ctx.from.id, state);
+
+    if (state.step === "confirm") {
+      return this.render(ctx, state);
+    }
+
+    return safeEdit(
+      ctx,
+      state.chatId,
+      state.messageId,
+      `Masukkan jumlah:\n\n💡 Otomatis:\nDeskripsi: ${state.deskripsi}\nAkun: ${state.akun}\nTag: ${state.tag}`,
+      kbText(false),
+    );
   },
 
   async handleCallback(ctx) {
     await ctx.answerCallbackQuery().catch(() => {});
 
-    const userId = ctx.from.id;
-    const state = getState(userId);
+    const state = states.get(ctx.from.id);
     if (!state) return;
 
     const data = ctx.callbackQuery?.data;
     if (!data?.startsWith("bunga:")) return;
 
-    const edit = (text, markup) => safeEdit(ctx, state.chatId, state.messageId, text, markup);
+    const edit = (text, markup) =>
+      safeEdit(ctx, state.chatId, state.messageId, text, markup);
 
     if (data === "bunga:cancel") {
-      clearState(userId);
+      states.delete(ctx.from.id);
       return edit("❌ Dibatalkan.");
     }
 
@@ -219,51 +224,48 @@ export default {
         state.step = state.history.pop();
         return this.render(ctx, state);
       }
-      clearState(userId);
+      states.delete(ctx.from.id);
       return edit("❌ Dibatalkan.");
     }
 
     if (data === "bunga:save:ok") {
-      try {
-        await appendTransaction(state);
-        clearState(userId);
+      await appendTransaction(state);
+      states.delete(ctx.from.id);
 
-        const successText = 
-          `<b>✅ Transaksi Berhasil!</b>\n\n` +
-          `<b>Jumlah:</b> ${formatAmount(state.jumlah, state.mataUang)}\n` +
-          `<b>Akun:</b> ${state.akun}\n` +
-          `<b>Saldo Akhir:</b> ${formatAmount(state.saldoSesudah, state.mataUang)}`;
+      const successText = `✅ Transaksi berhasil disimpan!\n\n` +
+        `Jenis: ${state.jenis}\n` +
+        `Kategori: ${state.kategori}\n` +
+        `Sub: ${state.subKategori}\n` +
+        `Deskripsi: ${state.deskripsi}\n` +
+        `Jumlah: ${formatAmount(state.jumlah, state.mataUang)}\n` +
+        `Akun: ${state.akun}\n` +
+        `Metode: ${state.metode}\n` +
+        `Tag: ${state.tag}\n` +
+        `Saldo Sebelum: ${formatAmount(state.saldoSebelum, state.mataUang)}\n` +
+        `Saldo Sesudah: ${formatAmount(state.saldoSesudah, state.mataUang)}`;
 
-        return edit(successText);
-      } catch (error) {
-        console.error("Save error:", error);
-        return edit("⚠️ Gagal menyimpan transaksi. Coba lagi.");
-      }
+      return edit(successText);
     }
   },
 
   async handleText(ctx) {
-    const userId = ctx.from.id;
-    const state = getState(userId);
+    const state = states.get(ctx.from.id);
     if (!state) return;
 
     await ctx.deleteMessage().catch(() => {});
     state.history.push(state.step);
 
     if (state.step === "jumlah") {
-      const amount = parseInputAmount(ctx.message.text);
-      if (amount <= 0) {
-        state.history.pop(); // Hapus langkah invalid dari history
-        return safeEdit(ctx, state.chatId, state.messageId, "⚠️ Jumlah tidak valid. Masukkan angka positif.", kbBack());
-      }
+      state.jumlah = parseInputAmount(ctx.message.text);
 
-      state.jumlah = amount;
-      
-      // Fetch balance only when needed
-      const { saldo, mataUang } = await fetchLastBalance(state.akun);
-      state.mataUang = mataUang;
+      const { saldo, mataUang } = getLastFromCache(
+        state.rows,
+        state.akun,
+      );
+
       state.saldoSebelum = saldo;
-      state.saldoSesudah = saldo + amount;
+      state.mataUang = mataUang;
+      state.saldoSesudah = saldo + state.jumlah;
 
       state.step = "confirm";
       return this.render(ctx, state);
@@ -271,37 +273,40 @@ export default {
   },
 
   async render(ctx, state) {
-    const edit = (text, markup) => safeEdit(ctx, state.chatId, state.messageId, text, markup);
+    const edit = (text, markup) =>
+      safeEdit(ctx, state.chatId, state.messageId, text, markup);
 
     switch (state.step) {
       case "jumlah":
         return edit(
-          `💰 <b>Masukkan Jumlah Bunga</b>\n\n` +
-          `Default:\n` +
-          `• Akun: ${state.akun}\n` +
-          `• Deskripsi: ${state.deskripsi}\n` +
-          `• Tag: ${state.tag}`,
-          kbBack()
+          `Masukkan jumlah:\n\n💡 Otomatis:\nDeskripsi: ${state.deskripsi}\nAkun: ${state.akun}\nTag: ${state.tag}`,
+          kbText(true),
         );
 
       case "confirm": {
-        const confirmText = 
-          `<b>🧾 Konfirmasi Transaksi</b>\n\n` +
-          `<b>Jenis:</b> ${state.jenis}\n` +
-          `<b>Kategori:</b> ${state.kategori} > ${state.subKategori}\n` +
-          `<b>Deskripsi:</b> ${state.deskripsi}\n\n` +
-          `<b>Jumlah:</b> ${formatAmount(state.jumlah, state.mataUang)}\n` +
-          `<b>Akun:</b> ${state.akun}\n` +
-          `<b>Metode:</b> ${state.metode}\n\n` +
-          `<b>Saldo Sebelum:</b> ${formatAmount(state.saldoSebelum, state.mataUang)}\n` +
-          `<b>Saldo Sesudah:</b> ${formatAmount(state.saldoSesudah, state.mataUang)}\n\n` +
-          `Lanjutkan?`;
+        const confirmText = `🧾 KONFIRMASI BUNGA
+
+Jenis: ${state.jenis}
+Kategori: ${state.kategori}
+Sub: ${state.subKategori}
+Deskripsi: ${state.deskripsi}
+Jumlah: ${formatAmount(state.jumlah, state.mataUang)}
+
+Akun: ${state.akun}
+Metode: ${state.metode}
+Tag: ${state.tag}
+Catatan: ${state.catatan}
+
+Saldo Sebelum: ${formatAmount(state.saldoSebelum, state.mataUang)}
+Saldo Sesudah: ${formatAmount(state.saldoSesudah, state.mataUang)}
+
+Lanjutkan?`;
 
         return edit(confirmText, kbConfirm());
       }
 
       default:
-        return edit("⚠️ Langkah tidak dikenal.", kbBack());
+        return edit("⚠️ Langkah tidak dikenal.", kbText(true));
     }
   },
 };
