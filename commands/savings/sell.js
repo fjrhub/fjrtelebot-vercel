@@ -375,11 +375,11 @@ Catatan: ${state.catatan}${warning}`;
 
       const isToken = /token/i.test(state.deskripsi);
 
-      if (state.akunKeluar === "Fjlsaldo") {
-        state.jumlahMasuk = parsed.nominal;
-        state.step = "jumlahKeluar";
-      } else if (state.akunKeluar === "Seabank" && isToken) {
+      if (isToken) {
         state.jumlahMasuk = parsed.nominal + TOKEN_FEE;
+        state.step = "jumlahKeluar";
+      } else if (state.akunKeluar === "Fjlsaldo") {
+        state.jumlahMasuk = parsed.nominal;
         state.step = "jumlahKeluar";
       } else {
         state.jumlahKeluar = parsed.nominal;
