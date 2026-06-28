@@ -176,6 +176,7 @@ export default {
 
     const args = ctx.message?.text?.split(" ") || [];
     const isAll = args.includes("-a");
+    const isCSV = args.includes("-csv");
 
     const relevantRows = rows.filter(r => r[1] === "Usaha" && r[2] === "Penjualan");
     let allTimeDateRange = "";
@@ -196,6 +197,20 @@ export default {
     }
 
     const nowWIB = getWIBDate();
+
+    // ✅ LOGIKA UNTUK /profit -csv (Kirim sebagai .csv)
+    if (isCSV) {
+      const periods = generatePeriods(nowWIB, earliestDate);
+      let csv = "Tanggal,Profit\n";
+      
+      periods.days.forEach(p => {
+        const data = calculateProfit(rows, p.start, p.end);
+        csv += `${p.label},${formatRupiah(data.profit)}\n`;
+      });
+
+      const buffer = Buffer.from(csv, "utf-8");
+      return await ctx.replyWithDocument(new InputFile(buffer, "profit-daily.csv"));
+    }
 
     // ✅ LOGIKA UNTUK /profit -a (Kirim sebagai .txt)
     if (isAll) {
