@@ -338,7 +338,7 @@ export default {
 
       // API configuration
       const enableStatus = {
-        tikTok: { siputzx: true, archive: true, vreden: true },
+        tikTok: { siputzx: false, archive: true, vreden: false },
         instagram: { siputzx: true, archive: true, vreden: true },
         facebook: { siputzx: true, archive: true, vreden: true },
       };
