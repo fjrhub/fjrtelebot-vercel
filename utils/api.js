@@ -3,8 +3,7 @@ export const APIs = {
     waifupics: "https://api.waifu.pics",
     siputzx: "https://api.siputzx.my.id",
     myquran: "https://api.myquran.com",
-    archive: "https://archive.lick.eu.org",
-    vreden: "https://api.vreden.my.id"
+    archive: "https://archive.lick.eu.org"
 };
 
 export function createUrl(name, path) {
