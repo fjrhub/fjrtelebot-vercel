@@ -646,7 +646,7 @@ export default {
       const enableStatus = {
         tikTok: { siputzx: false, archive: true, vreden: false },
         instagram: { siputzx: true, archive: false, vreden: false },
-        facebook: { siputzx: true, archive: true, vreden: true },
+        facebook: { siputzx: true, archive: true, vreden: false },
       };
 
       const apis = [];
