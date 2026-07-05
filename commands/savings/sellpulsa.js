@@ -15,7 +15,21 @@ const states = new Map();
 /* =========================
    UTIL
 ========================= */
-const toNumber = (v) => Number(String(v).replace(/\./g, "").replace(",", "."));
+const toNumber = (v) => {
+  let str = String(v).trim().toLowerCase();
+  let multiplier = 1;
+
+  if (str.endsWith("k")) {
+    multiplier = 1000;
+    str = str.slice(0, -1);
+  } else if (str.endsWith("m")) {
+    multiplier = 1000000;
+    str = str.slice(0, -1);
+  }
+
+  str = str.replace(/\./g, "").replace(",", ".");
+  return Number(str) * multiplier;
+};
 
 const formatRupiah = (n) => {
   const abs = Math.abs(n).toLocaleString("id-ID");
