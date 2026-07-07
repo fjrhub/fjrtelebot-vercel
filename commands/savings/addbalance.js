@@ -17,9 +17,19 @@ const OPTIONS = {
       "Belanja",
       "Investasi",
       "Hutang",
+      "Penyesuaian",
       "Lainnya",
     ],
-    Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Hutang", "Lainnya"],
+    Pemasukan: [
+      "Gaji", 
+      "Usaha", 
+      "Investasi", 
+      "Hadiah", 
+      "Refund", 
+      "Hutang", 
+      "Penyesuaian", 
+      "Lainnya"
+    ],
   },
 
   subKategori: {
@@ -37,7 +47,6 @@ const OPTIONS = {
         "Modul",
         "Iuran Sekolah",
       ],
-
       Administrasi: [
         "SKCK",
         "KTP",
@@ -51,13 +60,12 @@ const OPTIONS = {
         "BPJS",
         "Biaya Pemerintah",
       ],
-
       Belanja: ["Online", "Offline", "Langganan"],
       Investasi: ["Crypto", "Saham", "Emas", "Reksa Dana"],
       Hutang: ["Bayar Hutang", "Cicilan", "Potongan Hutang"],
+      Penyesuaian: ["Penyesuaian Bank", "Biaya Admin Bank", "Koreksi Saldo", "Rounding"],
       Lainnya: ["Uang Kas", "Kewajiban", "Pengeluaran Rutin", "Pengeluaran Lain"],
     },
-
     Pemasukan: {
       Gaji: ["Gaji Bulanan", "Bonus", "THR"],
       Usaha: ["Penjualan", "Jasa", "Komisi"],
@@ -65,17 +73,15 @@ const OPTIONS = {
       Hadiah: ["Uang Saku", "Hadiah", "Donasi"],
       Refund: ["Refund Belanja", "Cashback"],
       Hutang: ["Pinjaman Ibu", "Pinjaman Teman", "Talangan", "Utang Baru"],
+      Penyesuaian: ["Penyesuaian Bank", "Koreksi Bunga", "Bonus Saldo", "Rounding Positif"],
       Lainnya: ["Uang Saku", "Bantuan", "Pemasukan Lain"],
     },
   },
 
   akun: ["Wallet", "Dana", "Gopay", "Seabank", "Bank", "Binance", "Fjlsaldo"],
-
   metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
-
   mataUang: ["Rp", "USDT"],
 };
-
 /* =========================
    STATE
 ========================= */
