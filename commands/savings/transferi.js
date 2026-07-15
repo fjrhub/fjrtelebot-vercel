@@ -97,15 +97,42 @@ export default {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
     const text = ctx.message.text;
-    // Match format: /transferi <asal> <tujuan> <jumlah>[/<jumlah_terima>]
-    // Mendukung optional bot name seperti /transferi@botname
-    const match = text.match(/^\/transferi(?:@\S+)?\s+(\S+)\s+(\S+)\s+(.+)$/i);
+    const args = text.split(/\s+/);
     
-    if (!match) {
-      return ctx.reply("Format salah.\nGunakan: /transferi <asal> <tujuan> <jumlah>[/<jumlah_terima>]\nContoh: /transferi Seabank Dana 1juta/500k");
+    // Hapus command pertama (/transferi atau /transferi@botname)
+    args.shift();
+
+    // Cek apakah ada flag -admin
+    const withAdmin = args.includes("-admin");
+    if (withAdmin) {
+      const adminIndex = args.indexOf("-admin");
+      args.splice(adminIndex, 1);
     }
 
-    const [, asalStr, tujuanStr, amountStr] = match;
+    let asalStr, tujuanStr, jumlahKirimStr, jumlahTerimaStr;
+
+    if (withAdmin) {
+      // Format: /transferi -admin <asal> <tujuan> <jumlah_kirim> <jumlah_terima>
+      if (args.length !== 4) {
+        return ctx.reply(
+          "Format salah untuk mode -admin.\nGunakan: `/transferi -admin <asal> <tujuan> <jumlah_kirim> <jumlah_terima>`\nContoh: `/transferi -admin Seabank Dana 11k 10k`", 
+          { parse_mode: "Markdown" }
+        );
+      }
+      [asalStr, tujuanStr, jumlahKirimStr, jumlahTerimaStr] = args;
+    } else {
+      // Format: /transferi <asal> <tujuan> <jumlah>[/<jumlah_terima>]
+      if (args.length !== 3) {
+        return ctx.reply(
+          "Format salah.\nGunakan: `/transferi <asal> <tujuan> <jumlah>` atau `/transferi <asal> <tujuan> <jumlah_kirim>/<jumlah_terima>`\nContoh: `/transferi Seabank Dana 1juta` atau `/transferi Seabank Dana 11k/10k`", 
+          { parse_mode: "Markdown" }
+        );
+      }
+      [asalStr, tujuanStr, jumlahKirimStr] = args;
+      const parts = jumlahKirimStr.split('/');
+      jumlahKirimStr = parts[0];
+      jumlahTerimaStr = parts[1]; // Bisa undefined jika tidak pakai slash
+    }
     
     // Cari akun case-insensitive
     const findAkun = (str) => OPTIONS.akun.find(a => a.toLowerCase() === str.toLowerCase());
@@ -116,8 +143,7 @@ export default {
     if (!akunTujuan) return ctx.reply(`❌ Akun tujuan "${tujuanStr}" tidak ditemukan.`);
     if (akunAsal === akunTujuan) return ctx.reply("❌ Akun asal dan tujuan tidak boleh sama.");
 
-    // Parse jumlah kirim dan jumlah terima (jika ada)
-    const [jumlahKirimStr, jumlahTerimaStr] = amountStr.split('/');
+    // Parse jumlah kirim dan jumlah terima
     const jumlahKirim = toNumber(jumlahKirimStr);
     const jumlahTerima = jumlahTerimaStr ? toNumber(jumlahTerimaStr) : jumlahKirim;
 
@@ -154,6 +180,7 @@ export default {
       jumlahKirim,
       jumlahTerima,
       admin,
+      withAdmin, // <-- Flag baru untuk menandai mode admin
       deskripsi,
       tag,
       catatan,
@@ -197,7 +224,9 @@ export default {
       const tujuan = state.tujuan;
 
       let catatanFinal = state.catatan;
-      if (state.admin > 0) {
+      
+      // Catat fee jika mode admin aktif ATAU ada selisih jumlah
+      if ((state.withAdmin || state.admin > 0) && state.admin > 0) {
         catatanFinal += `, fee ${format(state.admin)}`;
       }
 
@@ -238,7 +267,9 @@ export default {
 
       states.delete(ctx.from.id);
 
-      const adminText = state.admin > 0 ? `\nBiaya Admin (Auto): ${asal.mataUang}${format(state.admin)}` : "";
+      const adminText = (state.withAdmin || state.admin > 0) && state.admin > 0 
+        ? `\nBiaya Admin: ${asal.mataUang}${format(state.admin)}` 
+        : "";
 
       return edit(
         `✅ TRANSFER BERHASIL DISIMPAN
@@ -280,8 +311,11 @@ Catatan: ${state.catatan}
     };
 
     if (state.step === "confirm") {
-      const { akunAsal, akunTujuan, jumlahKirim, jumlahTerima, admin, deskripsi, tag, catatan, asal, tujuan } = state;
-      const adminText = admin > 0 ? `\nBiaya Admin (Auto): ${asal.mataUang}${format(admin)}` : "";
+      const { akunAsal, akunTujuan, jumlahKirim, jumlahTerima, admin, deskripsi, tag, catatan, asal, tujuan, withAdmin } = state;
+      
+      const adminText = (withAdmin || admin > 0) && admin > 0 
+        ? `\nBiaya Admin: ${asal.mataUang}${format(admin)}` 
+        : "";
       
       return edit(
         `🧾 KONFIRMASI TRANSFER
