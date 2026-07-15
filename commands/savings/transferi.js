@@ -19,12 +19,10 @@ const toNumber = (v) => {
   let s = String(v).trim().toLowerCase();
   let multiplier = 1;
   
-  // Handle multiplier (k, juta, jt, m, mil)
   if (s.endsWith("k")) { multiplier = 1000; s = s.slice(0, -1); }
   else if (s.endsWith("jt") || s.endsWith("juta")) { multiplier = 1000000; s = s.replace(/jt|juta/g, ""); }
   else if (s.endsWith("m") || s.endsWith("mil")) { multiplier = 1000000; s = s.replace(/m|mil/g, ""); }
   
-  // Handle Indonesian number format (dot as thousand sep, comma as decimal)
   s = s.replace(/\s+/g, "").replace(/\./g, "").replace(",", ".");
   
   return Number(s) * multiplier;
@@ -96,13 +94,22 @@ export default {
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
-    const text = ctx.message.text;
-    const args = text.split(/\s+/);
+    let commandText = ctx.message.text;
+    let customDeskripsi = null;
     
-    // Hapus command pertama (/transferi atau /transferi@botname)
-    args.shift();
+    // Ekstrak flag -deskripsi atau -desc (mendukung tanda kutip untuk spasi)
+    const descRegex = /-(?:deskripsi|desc)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i;
+    const descMatch = commandText.match(descRegex);
+    
+    if (descMatch) {
+      customDeskripsi = descMatch[1] || descMatch[2] || descMatch[3];
+      // Hapus flag deskripsi dari teks perintah agar parsing argumen sisa tetap bersih
+      commandText = commandText.replace(descMatch[0], "").replace(/\s+/g, " ").trim();
+    }
 
-    // Cek apakah ada flag -admin
+    const args = commandText.split(/\s+/);
+    args.shift(); // Hapus command (/transferi atau /transferi@bot)
+
     const withAdmin = args.includes("-admin");
     if (withAdmin) {
       const adminIndex = args.indexOf("-admin");
@@ -112,29 +119,26 @@ export default {
     let asalStr, tujuanStr, jumlahKirimStr, jumlahTerimaStr;
 
     if (withAdmin) {
-      // Format: /transferi -admin <asal> <tujuan> <jumlah_kirim> <jumlah_terima>
       if (args.length !== 4) {
         return ctx.reply(
-          "Format salah untuk mode -admin.\nGunakan: `/transferi -admin <asal> <tujuan> <jumlah_kirim> <jumlah_terima>`\nContoh: `/transferi -admin Seabank Dana 11k 10k`", 
+          "Format salah untuk mode -admin.\nGunakan: `/transferi [-deskripsi \"teks\"] -admin <asal> <tujuan> <jumlah_kirim> <jumlah_terima>`\nContoh: `/transferi -desc \"Bayar Hutang\" -admin Seabank Dana 11k 10k`", 
           { parse_mode: "Markdown" }
         );
       }
       [asalStr, tujuanStr, jumlahKirimStr, jumlahTerimaStr] = args;
     } else {
-      // Format: /transferi <asal> <tujuan> <jumlah>[/<jumlah_terima>]
       if (args.length !== 3) {
         return ctx.reply(
-          "Format salah.\nGunakan: `/transferi <asal> <tujuan> <jumlah>` atau `/transferi <asal> <tujuan> <jumlah_kirim>/<jumlah_terima>`\nContoh: `/transferi Seabank Dana 1juta` atau `/transferi Seabank Dana 11k/10k`", 
+          "Format salah.\nGunakan: `/transferi [-deskripsi \"teks\"] <asal> <tujuan> <jumlah>` atau `/transferi <asal> <tujuan> <kirim>/<terima>`\nContoh: `/transferi -desc \"Uang Makan\" Seabank Dana 1juta`", 
           { parse_mode: "Markdown" }
         );
       }
       [asalStr, tujuanStr, jumlahKirimStr] = args;
       const parts = jumlahKirimStr.split('/');
       jumlahKirimStr = parts[0];
-      jumlahTerimaStr = parts[1]; // Bisa undefined jika tidak pakai slash
+      jumlahTerimaStr = parts[1];
     }
     
-    // Cari akun case-insensitive
     const findAkun = (str) => OPTIONS.akun.find(a => a.toLowerCase() === str.toLowerCase());
     const akunAsal = findAkun(asalStr);
     const akunTujuan = findAkun(tujuanStr);
@@ -143,19 +147,12 @@ export default {
     if (!akunTujuan) return ctx.reply(`❌ Akun tujuan "${tujuanStr}" tidak ditemukan.`);
     if (akunAsal === akunTujuan) return ctx.reply("❌ Akun asal dan tujuan tidak boleh sama.");
 
-    // Parse jumlah kirim dan jumlah terima
     const jumlahKirim = toNumber(jumlahKirimStr);
     const jumlahTerima = jumlahTerimaStr ? toNumber(jumlahTerimaStr) : jumlahKirim;
 
-    if (isNaN(jumlahKirim) || jumlahKirim <= 0) {
-      return ctx.reply("❌ Jumlah kirim tidak valid.");
-    }
-    if (isNaN(jumlahTerima) || jumlahTerima <= 0) {
-      return ctx.reply("❌ Jumlah diterima tidak valid.");
-    }
-    if (jumlahTerima > jumlahKirim) {
-      return ctx.reply("❌ Jumlah diterima tidak boleh lebih besar dari jumlah kirim.");
-    }
+    if (isNaN(jumlahKirim) || jumlahKirim <= 0) return ctx.reply("❌ Jumlah kirim tidak valid.");
+    if (isNaN(jumlahTerima) || jumlahTerima <= 0) return ctx.reply("❌ Jumlah diterima tidak valid.");
+    if (jumlahTerima > jumlahKirim) return ctx.reply("❌ Jumlah diterima tidak boleh lebih besar dari jumlah kirim.");
 
     const rows = await fetchAllRows();
     const asal = getLastSaldo(rows, akunAsal);
@@ -166,7 +163,8 @@ export default {
     }
 
     const admin = jumlahKirim - jumlahTerima;
-    const deskripsi = `Transfer ${akunAsal} ke ${akunTujuan}`;
+    // Gunakan custom deskripsi jika ada, jika tidak gunakan default
+    const deskripsi = customDeskripsi || `Transfer ${akunAsal} ke ${akunTujuan}`;
     const tag = "#transfer";
     const catatan = "-";
 
@@ -180,7 +178,7 @@ export default {
       jumlahKirim,
       jumlahTerima,
       admin,
-      withAdmin, // <-- Flag baru untuk menandai mode admin
+      withAdmin,
       deskripsi,
       tag,
       catatan,
@@ -189,8 +187,6 @@ export default {
     };
 
     states.set(ctx.from.id, state);
-
-    // Tampilkan preview konfirmasi
     return this.render(ctx, state);
   },
 
@@ -224,8 +220,6 @@ export default {
       const tujuan = state.tujuan;
 
       let catatanFinal = state.catatan;
-      
-      // Catat fee jika mode admin aktif ATAU ada selisih jumlah
       if ((state.withAdmin || state.admin > 0) && state.admin > 0) {
         catatanFinal += `, fee ${format(state.admin)}`;
       }
@@ -289,7 +283,7 @@ Tag: ${state.tag}
 Catatan: ${state.catatan}
 
 🕒 ${new Date().toLocaleString("id-ID")}`,
-        { inline_keyboard: [] } // Hapus tombol setelah sukses
+        { inline_keyboard: [] }
       );
     }
   },
