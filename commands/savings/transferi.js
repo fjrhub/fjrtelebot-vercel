@@ -18,13 +18,20 @@ const states = new Map();
 const toNumber = (v) => {
   let s = String(v).trim().toLowerCase();
   let multiplier = 1;
-  
-  if (s.endsWith("k")) { multiplier = 1000; s = s.slice(0, -1); }
-  else if (s.endsWith("jt") || s.endsWith("juta")) { multiplier = 1000000; s = s.replace(/jt|juta/g, ""); }
-  else if (s.endsWith("m") || s.endsWith("mil")) { multiplier = 1000000; s = s.replace(/m|mil/g, ""); }
-  
+
+  if (s.endsWith("k")) {
+    multiplier = 1000;
+    s = s.slice(0, -1);
+  } else if (s.endsWith("jt") || s.endsWith("juta")) {
+    multiplier = 1000000;
+    s = s.replace(/jt|juta/g, "");
+  } else if (s.endsWith("m") || s.endsWith("mil")) {
+    multiplier = 1000000;
+    s = s.replace(/m|mil/g, "");
+  }
+
   s = s.replace(/\s+/g, "").replace(/\./g, "").replace(",", ".");
-  
+
   return Number(s) * multiplier;
 };
 
@@ -96,15 +103,18 @@ export default {
 
     let commandText = ctx.message.text;
     let customDeskripsi = null;
-    
+
     // Ekstrak flag -deskripsi atau -desc (mendukung tanda kutip untuk spasi)
     const descRegex = /-(?:deskripsi|desc)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i;
     const descMatch = commandText.match(descRegex);
-    
+
     if (descMatch) {
       customDeskripsi = descMatch[1] || descMatch[2] || descMatch[3];
       // Hapus flag deskripsi dari teks perintah agar parsing argumen sisa tetap bersih
-      commandText = commandText.replace(descMatch[0], "").replace(/\s+/g, " ").trim();
+      commandText = commandText
+        .replace(descMatch[0], "")
+        .replace(/\s+/g, " ")
+        .trim();
     }
 
     const args = commandText.split(/\s+/);
@@ -121,50 +131,76 @@ export default {
     if (withAdmin) {
       if (args.length !== 4) {
         return ctx.reply(
-          "Format salah untuk mode -admin.\nGunakan: `/transferi [-deskripsi \"teks\"] -admin <asal> <tujuan> <jumlah_kirim> <jumlah_terima>`\nContoh: `/transferi -desc \"Bayar Hutang\" -admin Seabank Dana 11k 10k`", 
-          { parse_mode: "Markdown" }
+          "❌ **Format salah untuk mode Admin.**\n\n" +
+            "**Cara Penggunaan:**\n" +
+            "`/transferi -admin <asal> <tujuan> <jumlah_kirim> <jumlah_terima>`\n\n" +
+            "**Contoh:**\n" +
+            "• `/transferi -admin Seabank Dana 11k 10k` *(Kirim 11rb, Diterima 10rb)*\n" +
+            '• `/transferi -desc "Biaya Pro" -admin Seabank Dana 11k 10k`\n\n' +
+            "*Tips: Flag `-desc` bisa ditaruh di posisi mana saja.*",
+          { parse_mode: "Markdown" },
         );
       }
       [asalStr, tujuanStr, jumlahKirimStr, jumlahTerimaStr] = args;
     } else {
       if (args.length !== 3) {
         return ctx.reply(
-          "Format salah.\nGunakan: `/transferi [-deskripsi \"teks\"] <asal> <tujuan> <jumlah>` atau `/transferi <asal> <tujuan> <kirim>/<terima>`\nContoh: `/transferi -desc \"Uang Makan\" Seabank Dana 1juta`", 
-          { parse_mode: "Markdown" }
+          "❌ **Format salah.**\n\n" +
+            "**Cara Penggunaan:**\n" +
+            "`/transferi <asal> <tujuan> <jumlah>`\n\n" +
+            "**Contoh:**\n" +
+            "• **Normal:** `/transferi Seabank Dana 100k`\n" +
+            "• **Pecahan (Kirim/Terima):** `/transferi Seabank Dana 11k/10k`\n" +
+            '• **Pakai Deskripsi:** `/transferi -desc "Bayar Hutang" Seabank Dana 100k`\n\n' +
+            "*Tips: Flag `-desc` bisa ditaruh di posisi mana saja.*",
+          { parse_mode: "Markdown" },
         );
       }
       [asalStr, tujuanStr, jumlahKirimStr] = args;
-      const parts = jumlahKirimStr.split('/');
+      const parts = jumlahKirimStr.split("/");
       jumlahKirimStr = parts[0];
       jumlahTerimaStr = parts[1];
     }
-    
-    const findAkun = (str) => OPTIONS.akun.find(a => a.toLowerCase() === str.toLowerCase());
+
+    const findAkun = (str) =>
+      OPTIONS.akun.find((a) => a.toLowerCase() === str.toLowerCase());
     const akunAsal = findAkun(asalStr);
     const akunTujuan = findAkun(tujuanStr);
 
-    if (!akunAsal) return ctx.reply(`❌ Akun asal "${asalStr}" tidak ditemukan.`);
-    if (!akunTujuan) return ctx.reply(`❌ Akun tujuan "${tujuanStr}" tidak ditemukan.`);
-    if (akunAsal === akunTujuan) return ctx.reply("❌ Akun asal dan tujuan tidak boleh sama.");
+    if (!akunAsal)
+      return ctx.reply(`❌ Akun asal "${asalStr}" tidak ditemukan.`);
+    if (!akunTujuan)
+      return ctx.reply(`❌ Akun tujuan "${tujuanStr}" tidak ditemukan.`);
+    if (akunAsal === akunTujuan)
+      return ctx.reply("❌ Akun asal dan tujuan tidak boleh sama.");
 
     const jumlahKirim = toNumber(jumlahKirimStr);
-    const jumlahTerima = jumlahTerimaStr ? toNumber(jumlahTerimaStr) : jumlahKirim;
+    const jumlahTerima = jumlahTerimaStr
+      ? toNumber(jumlahTerimaStr)
+      : jumlahKirim;
 
-    if (isNaN(jumlahKirim) || jumlahKirim <= 0) return ctx.reply("❌ Jumlah kirim tidak valid.");
-    if (isNaN(jumlahTerima) || jumlahTerima <= 0) return ctx.reply("❌ Jumlah diterima tidak valid.");
-    if (jumlahTerima > jumlahKirim) return ctx.reply("❌ Jumlah diterima tidak boleh lebih besar dari jumlah kirim.");
+    if (isNaN(jumlahKirim) || jumlahKirim <= 0)
+      return ctx.reply("❌ Jumlah kirim tidak valid.");
+    if (isNaN(jumlahTerima) || jumlahTerima <= 0)
+      return ctx.reply("❌ Jumlah diterima tidak valid.");
+    if (jumlahTerima > jumlahKirim)
+      return ctx.reply(
+        "❌ Jumlah diterima tidak boleh lebih besar dari jumlah kirim.",
+      );
 
     const rows = await fetchAllRows();
     const asal = getLastSaldo(rows, akunAsal);
     const tujuan = getLastSaldo(rows, akunTujuan);
 
     if (asal.saldo < jumlahKirim) {
-      return ctx.reply(`❌ Saldo ${akunAsal} tidak mencukupi.\nSaldo: ${asal.mataUang}${format(asal.saldo)}`);
+      return ctx.reply(
+        `❌ Saldo ${akunAsal} tidak mencukupi.\nSaldo: ${asal.mataUang}${format(asal.saldo)}`,
+      );
     }
 
     const admin = jumlahKirim - jumlahTerima;
-    // Gunakan custom deskripsi jika ada, jika tidak gunakan default
-    const deskripsi = customDeskripsi || `Transfer ${akunAsal} ke ${akunTujuan}`;
+    const deskripsi =
+      customDeskripsi || `Transfer ${akunAsal} ke ${akunTujuan}`;
     const tag = "#transfer";
     const catatan = "-";
 
@@ -183,7 +219,7 @@ export default {
       tag,
       catatan,
       asal,
-      tujuan
+      tujuan,
     };
 
     states.set(ctx.from.id, state);
@@ -261,9 +297,10 @@ export default {
 
       states.delete(ctx.from.id);
 
-      const adminText = (state.withAdmin || state.admin > 0) && state.admin > 0 
-        ? `\nBiaya Admin: ${asal.mataUang}${format(state.admin)}` 
-        : "";
+      const adminText =
+        (state.withAdmin || state.admin > 0) && state.admin > 0
+          ? `\nBiaya Admin: ${asal.mataUang}${format(state.admin)}`
+          : "";
 
       return edit(
         `✅ TRANSFER BERHASIL DISIMPAN
@@ -283,7 +320,7 @@ Tag: ${state.tag}
 Catatan: ${state.catatan}
 
 🕒 ${new Date().toLocaleString("id-ID")}`,
-        { inline_keyboard: [] }
+        { inline_keyboard: [] },
       );
     }
   },
@@ -305,12 +342,25 @@ Catatan: ${state.catatan}
     };
 
     if (state.step === "confirm") {
-      const { akunAsal, akunTujuan, jumlahKirim, jumlahTerima, admin, deskripsi, tag, catatan, asal, tujuan, withAdmin } = state;
-      
-      const adminText = (withAdmin || admin > 0) && admin > 0 
-        ? `\nBiaya Admin: ${asal.mataUang}${format(admin)}` 
-        : "";
-      
+      const {
+        akunAsal,
+        akunTujuan,
+        jumlahKirim,
+        jumlahTerima,
+        admin,
+        deskripsi,
+        tag,
+        catatan,
+        asal,
+        tujuan,
+        withAdmin,
+      } = state;
+
+      const adminText =
+        (withAdmin || admin > 0) && admin > 0
+          ? `\nBiaya Admin: ${asal.mataUang}${format(admin)}`
+          : "";
+
       return edit(
         `🧾 KONFIRMASI TRANSFER
 
