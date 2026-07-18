@@ -99,10 +99,29 @@ export default {
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
 
-    const args = ctx.message?.text?.trim().split(/\s+/).slice(1);
+    let commandText = ctx.message.text;
+    let customDeskripsi = null;
+    
+    // Ekstrak flag -deskripsi atau -desc (mendukung tanda kutip untuk spasi)
+    const descRegex = /-(?:deskripsi|desc)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i;
+    const descMatch = commandText.match(descRegex);
+    
+    if (descMatch) {
+      customDeskripsi = descMatch[1] || descMatch[2] || descMatch[3];
+      commandText = commandText.replace(descMatch[0], "").replace(/\s+/g, " ").trim();
+    }
+
+    const args = commandText.trim().split(/\s+/).slice(1);
+    
     if (args.length < 4) {
       return ctx.reply(
-        "❌ Format salah.\n\nGunakan: `/selli <akunKeluar> <akunMasuk> <jumlahKeluar> <jumlahMasuk>`\nContoh: `/selli Dana Wallet 20K 22K`",
+        "❌ **Format salah.**\n\n" +
+        "**Cara Penggunaan:**\n" +
+        "`/selli <akunKeluar> <akunMasuk> <jumlahKeluar> <jumlahMasuk>`\n\n" +
+        "**Contoh:**\n" +
+        "• **Normal:** `/selli Dana Wallet 20K 22K`\n" +
+        "• **Pakai Deskripsi:** `/selli -desc \"Jual Pulsa\" Dana Wallet 20K 22K`\n\n" +
+        "*Tips: Flag `-desc` bisa ditaruh di posisi mana saja.*",
         { parse_mode: "Markdown" }
       );
     }
@@ -139,8 +158,8 @@ export default {
     const saldoMasukSesudah = saldoMasukSebelum + jumlahMasuk;
     const keuntungan = jumlahMasuk - jumlahKeluar;
 
-    // 🔥 Format sesuai request
-    const deskripsi = `${akunKeluar} ${keluarRaw}`;
+    // 🔥 Gunakan custom deskripsi jika ada, jika tidak gunakan default
+    const deskripsi = customDeskripsi || `${akunKeluar} ${keluarRaw}`;
     const tag = `#${akunKeluar.toLowerCase()}`;
     const catatan = "-";
 
