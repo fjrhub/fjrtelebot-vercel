@@ -218,9 +218,15 @@ export default {
       const asal = state.asal;
       const tujuan = state.tujuan;
 
+      // Perbaikan logika catatan: hilangkan "-" jika ada fee
       let catatanFinal = state.catatan;
       if ((state.withAdmin || state.admin > 0) && state.admin > 0) {
-        catatanFinal += `, fee ${format(state.admin)}`;
+        const feeText = `fee ${format(state.admin)}`;
+        if (!catatanFinal || catatanFinal === "-") {
+          catatanFinal = feeText;
+        } else {
+          catatanFinal += `, ${feeText}`;
+        }
       }
 
       await appendRows([
@@ -279,7 +285,7 @@ Ke: ${state.akunTujuan}
 Saldo: ${format(tujuan.saldo)} → ${format(tujuan.saldo + state.jumlahTerima)}
 
 Tag: ${state.tag}
-Catatan: ${state.catatan}
+Catatan: ${catatanFinal}
 
 🕒 ${new Date().toLocaleString("id-ID")}`,
         { inline_keyboard: [] }
@@ -304,8 +310,19 @@ Catatan: ${state.catatan}
     };
 
     if (state.step === "confirm") {
-      const { akunAsal, akunTujuan, jumlahKirim, jumlahTerima, admin, deskripsi, tag, catatan, asal, tujuan, withAdmin } = state;
+      const { akunAsal, akunTujuan, jumlahKirim, jumlahTerima, admin, deskripsi, tag, asal, tujuan, withAdmin } = state;
       
+      // Tampilkan catatan final juga di preview konfirmasi
+      let catatanFinal = state.catatan;
+      if ((withAdmin || admin > 0) && admin > 0) {
+        const feeText = `fee ${format(admin)}`;
+        if (!catatanFinal || catatanFinal === "-") {
+          catatanFinal = feeText;
+        } else {
+          catatanFinal += `, ${feeText}`;
+        }
+      }
+
       const adminText = (withAdmin || admin > 0) && admin > 0 
         ? `\nBiaya Admin: ${asal.mataUang}${format(admin)}` 
         : "";
@@ -325,7 +342,7 @@ Ke: ${akunTujuan}
 Saldo: ${format(tujuan.saldo)} → ${format(tujuan.saldo + jumlahTerima)}
 
 Tag: ${tag}
-Catatan: ${catatan}
+Catatan: ${catatanFinal}
 
 Lanjutkan?`,
         kbConfirm(),
