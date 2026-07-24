@@ -7,10 +7,10 @@ import { google } from "googleapis";
 const OPTIONS = {
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Fjlsaldo", "Gopay"],
   quickPairs: [
-    { label: "Seabank ➔ Wallet", masuk: "Seabank", keluar: "Wallet" },
-    { label: "Dana ➔ Bank", masuk: "Dana", keluar: "Bank" },
-    { label: "Gopay ➔ Seabank", masuk: "Gopay", keluar: "Seabank" },
-    { label: "Wallet ➔ Bank", masuk: "Wallet", keluar: "Bank" },
+    { label: "Seabank ➔ Wallet", keluar: "Seabank", masuk: "Wallet" },
+    { label: "Dana ➔ Bank", keluar: "Dana", masuk: "Bank" },
+    { label: "Gopay ➔ Seabank", keluar: "Gopay", masuk: "Seabank" },
+    { label: "Wallet ➔ Bank", keluar: "Wallet", masuk: "Bank" },
   ],
 };
 
