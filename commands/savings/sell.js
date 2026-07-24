@@ -6,6 +6,12 @@ import { google } from "googleapis";
 
 const OPTIONS = {
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Fjlsaldo", "Gopay"],
+  quickPairs: [
+    { label: "Seabank ➔ Wallet", masuk: "Seabank", keluar: "Wallet" },
+    { label: "Dana ➔ Bank", masuk: "Dana", keluar: "Bank" },
+    { label: "Gopay ➔ Seabank", masuk: "Gopay", keluar: "Seabank" },
+    { label: "Wallet ➔ Bank", masuk: "Wallet", keluar: "Bank" },
+  ],
 };
 
 const TOKEN_FEE = 3000;
@@ -20,51 +26,45 @@ const states = new Map();
    UTIL
 ========================= */
 
-// 🔥 FUNGSI DIPERBAIKI: Support desimal (1.2) & ribuan (1.000.000) secara otomatis
 const parseAmount = (v) => {
   const str = String(v).trim();
-  // Regex diperbaiki agar bisa menangkap banyak titik/koma (contoh: 1.000.000)
   const match = str.match(/(\d+(?:[.,]\d+)*)\s*(k|rb|ribu|jt|juta|m|miliar)?/i);
   if (!match) return NaN;
 
   let numStr = match[1];
   const suffix = match[2]?.toLowerCase();
 
-  // Logika penentuan pemisah desimal vs ribuan
   let decSep = null;
   if (numStr.includes('.') && numStr.includes(',')) {
-    // Jika ada keduanya, yang posisi terakhir adalah desimal
     decSep = numStr.lastIndexOf('.') > numStr.lastIndexOf(',') ? '.' : ',';
   } else if (numStr.includes('.')) {
     const dotCount = (numStr.match(/\./g) || []).length;
     if (dotCount > 1) {
-      decSep = ','; // Titik adalah ribuan (contoh: 1.000.000)
+      decSep = ',';
     } else {
       const parts = numStr.split('.');
-      // Jika digit setelah titik bukan 3, maka itu desimal (contoh: 1.2, 10.5)
       if (parts[1].length !== 3) {
         decSep = '.';
       } else {
-        decSep = ','; // Titik adalah ribuan (contoh: 1.500)
+        decSep = ',';
       }
     }
   } else if (numStr.includes(',')) {
     const commaCount = (numStr.match(/,/g) || []).length;
     if (commaCount > 1) {
-      decSep = '.'; // Koma adalah ribuan (contoh: 1,000,000)
+      decSep = '.';
     } else {
       const parts = numStr.split(',');
       if (parts[1].length !== 3) {
-        decSep = ','; // Koma adalah desimal (contoh: 1,2)
+        decSep = ',';
       } else {
-        decSep = '.'; // Koma adalah ribuan (contoh: 1,500)
+        decSep = '.';
       }
     }
   } else {
-    decSep = '.'; // Tidak ada pemisah
+    decSep = '.';
   }
 
-  // Normalisasi string: hapus pemisah ribuan, ganti pemisah desimal dengan titik
   let normalizedStr = numStr;
   if (decSep === ',') {
     normalizedStr = normalizedStr.replace(/\./g, '').replace(',', '.');
@@ -86,13 +86,11 @@ const formatRupiah = (n) => {
   return n < 0 ? `-Rp${abs}` : `Rp${abs}`;
 };
 
-// 🔥 Helper format saldo change dengan ikon + spasi di panah
 const formatSaldoLine = (akun, before, after, isKeluar) => {
   const icon = isKeluar ? "💸" : "💰";
   return `${icon} ${akun}: ${formatRupiah(before)} → ${formatRupiah(after)}`;
 };
 
-// 🔥 Refactor parseSellText agar menggunakan parseAmount (DRY)
 function parseSellText(text) {
   const trimmed = text.trim();
   const firstWord = trimmed.split(" ")[0].toLowerCase();
@@ -171,6 +169,17 @@ async function appendRows(values) {
    KEYBOARD
 ========================= */
 
+const kbQuickPairs = () => {
+  const buttons = OPTIONS.quickPairs.map((pair) => [
+    { text: pair.label, callback_data: `sell:quick:${pair.masuk}:${pair.keluar}` },
+  ]);
+  buttons.push([
+    { text: "⚙️ Pilih Manual", callback_data: "sell:manual" },
+    { text: "❌ Cancel", callback_data: "sell:cancel" },
+  ]);
+  return { inline_keyboard: buttons };
+};
+
 const kbList = (list, prefix, showBack = false, showCancel = false) => {
   const buttons = list.map((v) => [
     { text: v, callback_data: `${prefix}:${v}` },
@@ -217,12 +226,12 @@ export default {
 
     const rows = await fetchAllRows();
 
-    const msg = await ctx.reply("🔁 SELL\n\nPilih akun penerima pembayaran:", {
-      reply_markup: kbList(OPTIONS.akun, "sell:akunMasuk", false, true),
+    const msg = await ctx.reply("🔁 SELL\n\nPilih pasangan akun (Masuk ➔ Keluar) untuk lebih cepat,\natau pilih manual:", {
+      reply_markup: kbQuickPairs(),
     });
 
     states.set(ctx.from.id, {
-      step: "akunMasuk",
+      step: "quick",
       history: [],
       rows,
       chatId: ctx.chat.id,
@@ -249,12 +258,27 @@ export default {
     }
 
     if (data === "sell:back") {
-      state.step = state.history.pop() || "akunMasuk";
+      state.step = state.history.pop() || "quick";
       return this.render(ctx, state);
     }
 
-    const [, step, value] = data.split(":");
+    if (data === "sell:manual") {
+      state.step = "akunMasuk";
+      return this.render(ctx, state);
+    }
+
+    const parts = data.split(":");
+    const step = parts[1];
+    const value = parts[2];
+
     state.history.push(state.step);
+
+    if (step === "quick") {
+      state.akunMasuk = value;
+      state.akunKeluar = parts[3];
+      state.step = "deskripsi";
+      return this.render(ctx, state);
+    }
 
     if (step === "akunMasuk") {
       state.akunMasuk = value;
@@ -328,7 +352,6 @@ export default {
       let warning = "";
       if (keuntungan < 0) warning += "\n⚠️ Transaksi rugi.";
 
-      // 🔥 Saldo lines untuk success message
       const saldoLines = [
         formatSaldoLine(state.akunKeluar, saldoKeluarSebelum, saldoKeluarSesudah, true),
         formatSaldoLine(state.akunMasuk, saldoMasukSebelum, saldoMasukSesudah, false),
@@ -389,7 +412,6 @@ Catatan: ${state.catatan}${warning}`;
       return this.render(ctx, state);
     } 
     
-    // 🔥 UPDATE: Menggunakan parseAmount untuk step jumlahKeluar & jumlahMasuk
     else if (state.step === "jumlahKeluar") {
       const val = parseAmount(ctx.message.text);
       if (isNaN(val)) {
@@ -420,15 +442,21 @@ Catatan: ${state.catatan}${warning}`;
       safeEdit(ctx, state.chatId, state.messageId, text, markup);
 
     switch (state.step) {
+      case "quick":
+        return edit(
+          "🔁 SELL\n\nPilih pasangan akun (Masuk ➔ Keluar) untuk lebih cepat,\natau pilih manual:",
+          kbQuickPairs(),
+        );
+
       case "akunMasuk":
         return edit(
-          "🔁 SELL\n\nPilih akun penerima pembayaran:",
+          "🔁 SELL (Manual)\n\nPilih akun penerima pembayaran (Masuk):",
           kbList(OPTIONS.akun, "sell:akunMasuk", false, true),
         );
 
       case "akunKeluar":
         return edit(
-          "Pilih akun pengeluaran:",
+          "Pilih akun pengeluaran (Keluar):",
           kbList(OPTIONS.akun, "sell:akunKeluar", true, false),
         );
 
@@ -461,7 +489,6 @@ Tag: ${state.tag}`,
       case "confirm": {
         const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
 
-        // 🔥 Fetch saldo untuk display
         const masukInfo = getLastSaldo(state.rows, state.akunMasuk);
         const keluarInfo = getLastSaldo(state.rows, state.akunKeluar);
 
@@ -479,7 +506,6 @@ Tag: ${state.tag}`,
           warning += "\n⚠️ Saldo keluar tidak mencukupi!";
         }
 
-        // 🔥 Saldo lines dua baris sejajar, tanpa indentasi
         const saldoLines = [
           formatSaldoLine(state.akunKeluar, saldoKeluarSebelum, saldoKeluarSesudah, true),
           formatSaldoLine(state.akunMasuk, saldoMasukSebelum, saldoMasukSesudah, false),
