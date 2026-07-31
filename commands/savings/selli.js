@@ -1,4 +1,3 @@
-// selli.js
 import { google } from "googleapis";
 
 /* =========================
@@ -24,26 +23,35 @@ const formatSaldoLine = (akun, before, after, isKeluar) => {
 };
 
 const parseAmount = (str) => {
+  if (!str) return null;
   const match = str.match(/^(\d+(?:[.,]\d+)?)(k|rb|ribu|jt|juta)?$/i);
   if (!match) return null;
+  
   let amount = parseFloat(match[1].replace(/\./g, "").replace(",", "."));
   const suffix = match[2]?.toLowerCase();
+  
   if (["k", "rb", "ribu"].includes(suffix)) amount *= 1000;
   if (["jt", "juta"].includes(suffix)) amount *= 1000000;
+  
   return Math.round(amount);
 };
 
 const findAkun = (name) =>
-  OPTIONS.akun.find((a) => a.toLowerCase() === name.toLowerCase());
+  OPTIONS.akun.find((a) => a.toLowerCase() === name?.toLowerCase());
 
 /* =========================
    GOOGLE SHEETS
 ========================= */
 function sheetsClient() {
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  if (!process.env.GOOGLE_CLIENT_EMAIL || !privateKey) {
+    throw new Error("Kredensial Google Sheets tidak lengkap di .env");
+  }
+
   const auth = new google.auth.GoogleAuth({
     credentials: {
       client_email: process.env.GOOGLE_CLIENT_EMAIL,
-      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+      private_key: privateKey,
     },
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
@@ -51,21 +59,14 @@ function sheetsClient() {
 }
 
 async function fetchAllRows() {
+  if (!process.env.SPREADSHEET_ID) throw new Error("SPREADSHEET_ID tidak ditemukan di .env");
+  
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: "Sheet1!F2:J",
   });
   return res.data.values || [];
-}
-
-function getLastSaldo(rows, akun) {
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i][1] === akun) {
-      return { mataUang: "Rp", saldo: Number(rows[i][4]) || 0 };
-    }
-  }
-  return { mataUang: "Rp", saldo: 0 };
 }
 
 async function appendRows(values) {
@@ -85,7 +86,7 @@ async function safeEdit(ctx, chatId, messageId, text, markup) {
     });
   } catch (err) {
     if (err.description?.includes("message is not modified")) return;
-    console.error("❌ editMessageText error:", err);
+    console.error("❌ [selli] editMessageText error:", err);
     throw err;
   }
 }
@@ -97,167 +98,188 @@ export default {
   name: "selli",
 
   async execute(ctx) {
-    if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
-
-    let commandText = ctx.message.text;
-    let customDeskripsi = null;
-    
-    // Ekstrak flag -deskripsi atau -desc (mendukung tanda kutip untuk spasi)
-    const descRegex = /-(?:deskripsi|desc)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i;
-    const descMatch = commandText.match(descRegex);
-    
-    if (descMatch) {
-      customDeskripsi = descMatch[1] || descMatch[2] || descMatch[3];
-      commandText = commandText.replace(descMatch[0], "").replace(/\s+/g, " ").trim();
-    }
-
-    const args = commandText.trim().split(/\s+/).slice(1);
-    
-    if (args.length < 4) {
-      return ctx.reply(
-        "❌ **Format salah.**\n\n" +
-        "**Cara Penggunaan:**\n" +
-        "`/selli <akunKeluar> <akunMasuk> <jumlahKeluar> <jumlahMasuk>`\n\n" +
-        "**Contoh:**\n" +
-        "• **Normal:** `/selli Dana Wallet 20K 22K`\n" +
-        "• **Pakai Deskripsi:** `/selli -desc \"Jual Pulsa\" Dana Wallet 20K 22K`\n\n" +
-        "*Tips: Flag `-desc` bisa ditaruh di posisi mana saja.*",
-        { parse_mode: "Markdown" }
-      );
-    }
-
-    const [akunKeluarRaw, akunMasukRaw, keluarRaw, masukRaw] = args;
-    const akunKeluar = findAkun(akunKeluarRaw);
-    const akunMasuk = findAkun(akunMasukRaw);
-
-    if (!akunKeluar || !akunMasuk) {
-      return ctx.reply(`❌ Akun tidak valid.\nPilihan: ${OPTIONS.akun.join(", ")}`);
-    }
-    if (akunKeluar === akunMasuk) {
-      return ctx.reply("❌ Akun masuk dan keluar tidak boleh sama.");
-    }
-
-    const jumlahKeluar = parseAmount(keluarRaw);
-    const jumlahMasuk = parseAmount(masukRaw);
-
-    if (jumlahKeluar === null || jumlahMasuk === null) {
-      return ctx.reply("❌ Format jumlah salah.\nGunakan suffix: K, rb, ribu, jt, juta");
-    }
-
-    const rows = await fetchAllRows();
-    const keluarInfo = getLastSaldo(rows, akunKeluar);
-    const masukInfo = getLastSaldo(rows, akunMasuk);
-
-    if (keluarInfo.saldo < jumlahKeluar) {
-      return ctx.reply(`❌ Saldo ${akunKeluar} tidak mencukupi.\nTersedia: ${formatRupiah(keluarInfo.saldo)}`);
-    }
-
-    const saldoKeluarSebelum = keluarInfo.saldo;
-    const saldoKeluarSesudah = saldoKeluarSebelum - jumlahKeluar;
-    const saldoMasukSebelum = masukInfo.saldo;
-    const saldoMasukSesudah = saldoMasukSebelum + jumlahMasuk;
-    const keuntungan = jumlahMasuk - jumlahKeluar;
-
-    // 🔥 Gunakan custom deskripsi jika ada, jika tidak gunakan default
-    const deskripsi = customDeskripsi || `${akunKeluar} ${keluarRaw}`;
-    const tag = `#${akunKeluar.toLowerCase()}`;
-    const catatan = "-";
-
-    const msg = await ctx.reply(
-      `🧾 PREVIEW TRANSAKSI
-
-📝 Deskripsi: ${deskripsi}
-💸 Keluar: ${formatRupiah(jumlahKeluar)} dari ${akunKeluar}
-💰 Masuk: ${formatRupiah(jumlahMasuk)} ke ${akunMasuk}
-📈 Keuntungan: ${formatRupiah(keuntungan)}
-
-${formatSaldoLine(akunKeluar, saldoKeluarSebelum, saldoKeluarSesudah, true)}
-${formatSaldoLine(akunMasuk, saldoMasukSebelum, saldoMasukSesudah, false)}
-
-Tag: ${tag} | Catatan: ${catatan}`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "✅ Simpan", callback_data: "selli:save:ok" }],
-            [{ text: "❌ Batal", callback_data: "selli:cancel" }],
-          ],
-        },
+    try {
+      // Gunakan String comparison untuk menghindari bug tipe data dari .env
+      if (String(ctx.from?.id) !== String(process.env.OWNER_ID)) {
+        console.warn(`[selli] Akses ditolak untuk user ID: ${ctx.from?.id}`);
+        return ctx.reply("❌ Akses ditolak. Hanya owner yang dapat menggunakan perintah ini.");
       }
-    );
 
-    states.set(ctx.from.id, {
-      chatId: ctx.chat.id,
-      messageId: msg.message_id,
-      akunKeluar,
-      akunMasuk,
-      jumlahKeluar,
-      jumlahMasuk,
-      deskripsi,
-      tag,
-      catatan,
-      saldoKeluarSebelum,
-      saldoKeluarSesudah,
-      saldoMasukSebelum,
-      saldoMasukSesudah,
-    });
+      let commandText = ctx.message?.text || "";
+      let customDeskripsi = null;
+      
+      const descRegex = /-(?:deskripsi|desc)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i;
+      const descMatch = commandText.match(descRegex);
+      
+      if (descMatch) {
+        customDeskripsi = descMatch[1] || descMatch[2] || descMatch[3];
+        commandText = commandText.replace(descMatch[0], "").replace(/\s+/g, " ").trim();
+      }
+
+      const args = commandText.trim().split(/\s+/).slice(1);
+      
+      if (args.length < 4) {
+        return ctx.reply(
+          "❌ **Format salah.**\n\n" +
+          "**Cara Penggunaan:**\n" +
+          "`/selli <akunKeluar> <akunMasuk> <jumlahKeluar> <jumlahMasuk>`\n\n" +
+          "**Contoh:**\n" +
+          "• **Normal:** `/selli Dana Wallet 20K 22K`\n" +
+          "• **Pakai Deskripsi:** `/selli -desc \"Jual Pulsa\" Dana Wallet 20K 22K`\n\n" +
+          "*Tips: Flag `-desc` bisa ditaruh di posisi mana saja.*",
+          { parse_mode: "Markdown" }
+        );
+      }
+
+      const [akunKeluarRaw, akunMasukRaw, keluarRaw, masukRaw] = args;
+      const akunKeluar = findAkun(akunKeluarRaw);
+      const akunMasuk = findAkun(akunMasukRaw);
+
+      if (!akunKeluar || !akunMasuk) {
+        return ctx.reply(`❌ Akun tidak valid.\nPilihan: ${OPTIONS.akun.join(", ")}`);
+      }
+      if (akunKeluar === akunMasuk) {
+        return ctx.reply("❌ Akun masuk dan keluar tidak boleh sama.");
+      }
+
+      const jumlahKeluar = parseAmount(keluarRaw);
+      const jumlahMasuk = parseAmount(masukRaw);
+
+      if (jumlahKeluar === null || jumlahMasuk === null) {
+        return ctx.reply("❌ Format jumlah salah.\nGunakan suffix: K, rb, ribu, jt, juta");
+      }
+
+      const rows = await fetchAllRows();
+      const keluarInfo = getLastSaldo(rows, akunKeluar);
+      const masukInfo = getLastSaldo(rows, akunMasuk);
+
+      if (keluarInfo.saldo < jumlahKeluar) {
+        return ctx.reply(`❌ Saldo ${akunKeluar} tidak mencukupi.\nTersedia: ${formatRupiah(keluarInfo.saldo)}`);
+      }
+
+      const saldoKeluarSebelum = keluarInfo.saldo;
+      const saldoKeluarSesudah = saldoKeluarSebelum - jumlahKeluar;
+      const saldoMasukSebelum = masukInfo.saldo;
+      const saldoMasukSesudah = saldoMasukSebelum + jumlahMasuk;
+      const keuntungan = jumlahMasuk - jumlahKeluar;
+
+      const deskripsi = customDeskripsi || `${akunKeluar} ${keluarRaw}`;
+      const tag = `#${akunKeluar.toLowerCase()}`;
+      const catatan = "-";
+
+      const msg = await ctx.reply(
+        `🧾 PREVIEW TRANSAKSI\n\n` +
+        `📝 Deskripsi: ${deskripsi}\n` +
+        `💸 Keluar: ${formatRupiah(jumlahKeluar)} dari ${akunKeluar}\n` +
+        `💰 Masuk: ${formatRupiah(jumlahMasuk)} ke ${akunMasuk}\n` +
+        `📈 Keuntungan: ${formatRupiah(keuntungan)}\n\n` +
+        `${formatSaldoLine(akunKeluar, saldoKeluarSebelum, saldoKeluarSesudah, true)}\n` +
+        `${formatSaldoLine(akunMasuk, saldoMasukSebelum, saldoMasukSesudah, false)}\n\n` +
+        `Tag: ${tag} | Catatan: ${catatan}`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "✅ Simpan", callback_data: "selli:save:ok" }],
+              [{ text: "❌ Batal", callback_data: "selli:cancel" }],
+            ],
+          },
+        }
+      );
+
+      states.set(ctx.from.id, {
+        chatId: ctx.chat.id,
+        messageId: msg.message_id,
+        akunKeluar,
+        akunMasuk,
+        jumlahKeluar,
+        jumlahMasuk,
+        deskripsi,
+        tag,
+        catatan,
+        saldoKeluarSebelum,
+        saldoKeluarSesudah,
+        saldoMasukSebelum,
+        saldoMasukSesudah,
+      });
+
+    } catch (error) {
+      console.error("❌ [selli] Execute Error:", error);
+      ctx.reply(`❌ Terjadi kesalahan sistem: ${error.message}`).catch(console.error);
+    }
   },
 
   async handleCallback(ctx) {
-    await ctx.answerCallbackQuery().catch(() => {});
-    if (!ctx.callbackQuery?.data?.startsWith("selli:")) return;
+    try {
+      await ctx.answerCallbackQuery().catch(() => {});
+      if (!ctx.callbackQuery?.data?.startsWith("selli:")) return;
 
-    const state = states.get(ctx.from.id);
-    if (!state) return;
+      const state = states.get(ctx.from.id);
+      if (!state) {
+        return ctx.reply("❌ Sesi transaksi telah berakhir atau tidak ditemukan. Silakan ulangi perintah.");
+      }
 
-    const edit = (text, markup) =>
-      safeEdit(ctx, state.chatId, state.messageId, text, markup);
-    const data = ctx.callbackQuery.data;
+      const edit = (text, markup) => safeEdit(ctx, state.chatId, state.messageId, text, markup);
+      const data = ctx.callbackQuery.data;
 
-    if (data === "selli:cancel") {
-      states.delete(ctx.from.id);
-      return edit("❌ Transaksi dibatalkan.");
-    }
+      if (data === "selli:cancel") {
+        states.delete(ctx.from.id);
+        return edit("❌ Transaksi dibatalkan.");
+      }
 
-    if (data === "selli:save:ok") {
-      const now = new Date().toISOString();
+      if (data === "selli:save:ok") {
+        const now = new Date().toISOString();
 
-      const entries = [
-        [
-          "Pengeluaran", "Usaha", "Penjualan", state.deskripsi, state.jumlahKeluar, "Rp",
-          state.akunKeluar, "Transfer", state.saldoKeluarSebelum, state.saldoKeluarSesudah,
-          state.tag, state.catatan, now, now,
-        ],
-        [
-          "Pemasukan", "Usaha", "Penjualan", state.deskripsi, state.jumlahMasuk, "Rp",
-          state.akunMasuk, "Cash", state.saldoMasukSebelum, state.saldoMasukSesudah,
-          state.tag, state.catatan, now, now,
-        ],
-      ];
+        const entries = [
+          [
+            "Pengeluaran", "Usaha", "Penjualan", state.deskripsi, state.jumlahKeluar, "Rp",
+            state.akunKeluar, "Transfer", state.saldoKeluarSebelum, state.saldoKeluarSesudah,
+            state.tag, state.catatan, now, now,
+          ],
+          [
+            "Pemasukan", "Usaha", "Penjualan", state.deskripsi, state.jumlahMasuk, "Rp",
+            state.akunMasuk, "Cash", state.saldoMasukSebelum, state.saldoMasukSesudah,
+            state.tag, state.catatan, now, now,
+          ],
+        ];
 
-      await appendRows(entries);
-      states.delete(ctx.from.id);
+        await appendRows(entries);
+        states.delete(ctx.from.id);
 
-      const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
-      const warning = keuntungan < 0 ? "\n⚠️ Transaksi rugi." : "";
+        const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
+        const warning = keuntungan < 0 ? "\n⚠️ Transaksi rugi." : "";
 
-      const saldoLines = [
-        formatSaldoLine(state.akunKeluar, state.saldoKeluarSebelum, state.saldoKeluarSesudah, true),
-        formatSaldoLine(state.akunMasuk, state.saldoMasukSebelum, state.saldoMasukSesudah, false),
-      ].join("\n");
+        const saldoLines = [
+          formatSaldoLine(state.akunKeluar, state.saldoKeluarSebelum, state.saldoKeluarSesudah, true),
+          formatSaldoLine(state.akunMasuk, state.saldoMasukSebelum, state.saldoMasukSesudah, false),
+        ].join("\n");
 
-      const successText = `✅ Transaksi berhasil disimpan!
+        const successText = `✅ Transaksi berhasil disimpan!\n\n` +
+          `🧾 DETAIL:\n` +
+          `📝 Deskripsi: ${state.deskripsi}\n` +
+          `💸 Keluar: ${formatRupiah(state.jumlahKeluar)} dari ${state.akunKeluar}\n` +
+          `💰 Masuk: ${formatRupiah(state.jumlahMasuk)} ke ${state.akunMasuk}\n` +
+          `📈 Keuntungan: ${formatRupiah(keuntungan)}\n\n` +
+          `${saldoLines}\n\n` +
+          `Tag: ${state.tag} | Catatan: ${state.catatan}${warning}`;
 
-🧾 DETAIL:
-📝 Deskripsi: ${state.deskripsi}
-💸 Keluar: ${formatRupiah(state.jumlahKeluar)} dari ${state.akunKeluar}
-💰 Masuk: ${formatRupiah(state.jumlahMasuk)} ke ${state.akunMasuk}
-📈 Keuntungan: ${formatRupiah(keuntungan)}
-
-${saldoLines}
-
-Tag: ${state.tag} | Catatan: ${state.catatan}${warning}`;
-
-      return edit(successText);
+        return edit(successText);
+      }
+    } catch (error) {
+      console.error("❌ [selli] Callback Error:", error);
+      try {
+        await ctx.editMessageText(`❌ Gagal memproses: ${error.message}`);
+      } catch (e) {
+        await ctx.reply(`❌ Gagal memproses: ${error.message}`).catch(console.error);
+      }
     }
   },
 };
+
+function getLastSaldo(rows, akun) {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i]?.[1] === akun) {
+      return { mataUang: "Rp", saldo: Number(rows[i][4]) || 0 };
+    }
+  }
+  return { mataUang: "Rp", saldo: 0 };
+}
