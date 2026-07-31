@@ -24,7 +24,7 @@ const formatSaldoLine = (akun, before, after, isKeluar) => {
 
 const parseAmount = (str) => {
   if (!str) return null;
-  const match = str.match(/^(\d+(?:[.,]\d+)?)(k|rb|ribu|jt|juta)?$/i);
+  const match = String(str).match(/^(\d+(?:[.,]\d+)?)(k|rb|ribu|jt|juta)?$/i);
   if (!match) return null;
   
   let amount = parseFloat(match[1].replace(/\./g, "").replace(",", "."));
@@ -37,7 +37,7 @@ const parseAmount = (str) => {
 };
 
 const findAkun = (name) =>
-  OPTIONS.akun.find((a) => a.toLowerCase() === name?.toLowerCase());
+  OPTIONS.akun.find((a) => a.toLowerCase() === String(name).toLowerCase());
 
 /* =========================
    GOOGLE SHEETS
@@ -91,6 +91,15 @@ async function safeEdit(ctx, chatId, messageId, text, markup) {
   }
 }
 
+function getLastSaldo(rows, akun) {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i]?.[1] === akun) {
+      return { mataUang: "Rp", saldo: Number(rows[i][4]) || 0 };
+    }
+  }
+  return { mataUang: "Rp", saldo: 0 };
+}
+
 /* =========================
    COMMAND
 ========================= */
@@ -99,13 +108,14 @@ export default {
 
   async execute(ctx) {
     try {
-      // Gunakan String comparison untuk menghindari bug tipe data dari .env
+      // String comparison untuk mencegah bug tipe data dari .env
       if (String(ctx.from?.id) !== String(process.env.OWNER_ID)) {
         console.warn(`[selli] Akses ditolak untuk user ID: ${ctx.from?.id}`);
         return ctx.reply("❌ Akses ditolak. Hanya owner yang dapat menggunakan perintah ini.");
       }
 
-      let commandText = ctx.message?.text || "";
+      // Fallback ke caption jika pesan berupa foto/media
+      let commandText = ctx.message?.text || ctx.message?.caption || "";
       let customDeskripsi = null;
       
       const descRegex = /-(?:deskripsi|desc)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i;
@@ -274,12 +284,3 @@ export default {
     }
   },
 };
-
-function getLastSaldo(rows, akun) {
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i]?.[1] === akun) {
-      return { mataUang: "Rp", saldo: Number(rows[i][4]) || 0 };
-    }
-  }
-  return { mataUang: "Rp", saldo: 0 };
-}
