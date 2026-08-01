@@ -17,7 +17,7 @@ const formatRupiah = (n) => {
 };
 
 const formatSaldoLine = (akun, before, after, isKeluar) => {
-  const icon = isKeluar ? "💸" : "💰";
+  const icon = isKeluar ? "" : "💰";
   return `${icon} ${akun}: ${formatRupiah(before)} → ${formatRupiah(after)}`;
 };
 
@@ -108,10 +108,21 @@ export default {
       const ownerId = String(process.env.OWNER_ID).replace(/['"]+/g, '');
       if (String(ctx.from?.id) !== ownerId) {
         console.warn("⛔ [SELLI] Akses ditolak. ID User:", ctx.from?.id, "ID Owner di .env:", ownerId);
-        return ctx.reply("❌ Akses ditolak. Hanya owner yang dapat menggunakan perintah ini.");
+        return ctx.reply(" Akses ditolak. Hanya owner yang dapat menggunakan perintah ini.");
       }
 
-      let commandText = ctx.message?.text || ctx.message?.caption || "";
+      // 🔥 FIX: Bersihkan karakter tersembunyi dari copy-paste
+      let commandText = (ctx.message?.text || ctx.message?.caption || "")
+        .replace(/\u200B/g, '')        // Hapus zero-width space
+        .replace(/\u200C/g, '')        // Hapus zero-width non-joiner
+        .replace(/\u200D/g, '')        // Hapus zero-width joiner
+        .replace(/\uFEFF/g, '')        // Hapus byte order mark
+        .replace(/\u00A0/g, ' ')       // Ganti non-breaking space dengan spasi normal
+        .replace(/\s+/g, ' ')          // Normalisasi spasi ganda
+        .trim();
+      
+      console.log("🧹 [SELLI] Text setelah dibersihkan:", commandText);
+
       let customDeskripsi = null;
       
       const descRegex = /-(?:deskripsi|desc)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i;
@@ -259,7 +270,7 @@ export default {
         states.delete(ctx.from.id);
 
         const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
-        const warning = keuntungan < 0 ? "\n⚠️ Transaksi rugi." : "";
+        const warning = keuntungan < 0 ? "\n️ Transaksi rugi." : "";
         const saldoLines = [
           formatSaldoLine(state.akunKeluar, state.saldoKeluarSebelum, state.saldoKeluarSesudah, true),
           formatSaldoLine(state.akunMasuk, state.saldoMasukSebelum, state.saldoMasukSesudah, false),
