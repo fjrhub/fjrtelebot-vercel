@@ -6,7 +6,6 @@ import { google } from "googleapis";
 const OPTIONS = {
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Fjlsaldo", "Gopay"],
 };
-
 const states = new Map();
 
 /* =========================
@@ -45,9 +44,8 @@ const findAkun = (name) =>
 function sheetsClient() {
   const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
   if (!process.env.GOOGLE_CLIENT_EMAIL || !privateKey) {
-    throw new Error("Kredensial Google Sheets tidak lengkap di .env");
+    throw new Error("Kredensial Google Sheets (CLIENT_EMAIL / PRIVATE_KEY) tidak lengkap di .env");
   }
-
   const auth = new google.auth.GoogleAuth({
     credentials: {
       client_email: process.env.GOOGLE_CLIENT_EMAIL,
@@ -60,7 +58,6 @@ function sheetsClient() {
 
 async function fetchAllRows() {
   if (!process.env.SPREADSHEET_ID) throw new Error("SPREADSHEET_ID tidak ditemukan di .env");
-  
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.SPREADSHEET_ID,
@@ -81,9 +78,7 @@ async function appendRows(values) {
 
 async function safeEdit(ctx, chatId, messageId, text, markup) {
   try {
-    return await ctx.api.editMessageText(chatId, messageId, text, {
-      reply_markup: markup,
-    });
+    return await ctx.api.editMessageText(chatId, messageId, text, { reply_markup: markup });
   } catch (err) {
     if (err.description?.includes("message is not modified")) return;
     console.error("❌ [selli] editMessageText error:", err);
@@ -107,14 +102,15 @@ export default {
   name: "selli",
 
   async execute(ctx) {
+    console.log("🚀 [SELLI] Command diterima. Text:", ctx.message?.text);
     try {
-      // String comparison untuk mencegah bug tipe data dari .env
-      if (String(ctx.from?.id) !== String(process.env.OWNER_ID)) {
-        console.warn(`[selli] Akses ditolak untuk user ID: ${ctx.from?.id}`);
+      // Bersihkan tanda kutip dari .env jika ada
+      const ownerId = String(process.env.OWNER_ID).replace(/['"]+/g, '');
+      if (String(ctx.from?.id) !== ownerId) {
+        console.warn("⛔ [SELLI] Akses ditolak. ID User:", ctx.from?.id, "ID Owner di .env:", ownerId);
         return ctx.reply("❌ Akses ditolak. Hanya owner yang dapat menggunakan perintah ini.");
       }
 
-      // Fallback ke caption jika pesan berupa foto/media
       let commandText = ctx.message?.text || ctx.message?.caption || "";
       let customDeskripsi = null;
       
@@ -124,9 +120,12 @@ export default {
       if (descMatch) {
         customDeskripsi = descMatch[1] || descMatch[2] || descMatch[3];
         commandText = commandText.replace(descMatch[0], "").replace(/\s+/g, " ").trim();
+        console.log("✅ [SELLI] Deskripsi ditemukan:", customDeskripsi);
+        console.log("✅ [SELLI] Sisa commandText:", commandText);
       }
 
       const args = commandText.trim().split(/\s+/).slice(1);
+      console.log("📦 [SELLI] Args yang diproses:", args);
       
       if (args.length < 4) {
         return ctx.reply(
@@ -135,8 +134,7 @@ export default {
           "`/selli <akunKeluar> <akunMasuk> <jumlahKeluar> <jumlahMasuk>`\n\n" +
           "**Contoh:**\n" +
           "• **Normal:** `/selli Dana Wallet 20K 22K`\n" +
-          "• **Pakai Deskripsi:** `/selli -desc \"Jual Pulsa\" Dana Wallet 20K 22K`\n\n" +
-          "*Tips: Flag `-desc` bisa ditaruh di posisi mana saja.*",
+          "• **Pakai Deskripsi:** `/selli -desc \"Jual Pulsa\" Dana Wallet 20K 22K`",
           { parse_mode: "Markdown" }
         );
       }
@@ -159,7 +157,10 @@ export default {
         return ctx.reply("❌ Format jumlah salah.\nGunakan suffix: K, rb, ribu, jt, juta");
       }
 
+      console.log("🔄 [SELLI] Menghubungi Google Sheets...");
       const rows = await fetchAllRows();
+      console.log("✅ [SELLI] Data Google Sheets berhasil diambil. Jumlah baris:", rows.length);
+      
       const keluarInfo = getLastSaldo(rows, akunKeluar);
       const masukInfo = getLastSaldo(rows, akunMasuk);
 
@@ -177,6 +178,7 @@ export default {
       const tag = `#${akunKeluar.toLowerCase()}`;
       const catatan = "-";
 
+      console.log("📤 [SELLI] Mengirim preview ke Telegram...");
       const msg = await ctx.reply(
         `🧾 PREVIEW TRANSAKSI\n\n` +
         `📝 Deskripsi: ${deskripsi}\n` +
@@ -211,9 +213,10 @@ export default {
         saldoMasukSebelum,
         saldoMasukSesudah,
       });
+      console.log("✅ [SELLI] Transaksi berhasil diproses dan menunggu konfirmasi.");
 
     } catch (error) {
-      console.error("❌ [selli] Execute Error:", error);
+      console.error("💥 [SELLI] CRASH TOTAL:", error);
       ctx.reply(`❌ Terjadi kesalahan sistem: ${error.message}`).catch(console.error);
     }
   },
@@ -238,7 +241,6 @@ export default {
 
       if (data === "selli:save:ok") {
         const now = new Date().toISOString();
-
         const entries = [
           [
             "Pengeluaran", "Usaha", "Penjualan", state.deskripsi, state.jumlahKeluar, "Rp",
@@ -252,12 +254,12 @@ export default {
           ],
         ];
 
+        console.log("💾 [SELLI] Menyimpan ke Google Sheets...");
         await appendRows(entries);
         states.delete(ctx.from.id);
 
         const keuntungan = state.jumlahMasuk - state.jumlahKeluar;
         const warning = keuntungan < 0 ? "\n⚠️ Transaksi rugi." : "";
-
         const saldoLines = [
           formatSaldoLine(state.akunKeluar, state.saldoKeluarSebelum, state.saldoKeluarSesudah, true),
           formatSaldoLine(state.akunMasuk, state.saldoMasukSebelum, state.saldoMasukSesudah, false),
@@ -275,7 +277,7 @@ export default {
         return edit(successText);
       }
     } catch (error) {
-      console.error("❌ [selli] Callback Error:", error);
+      console.error("💥 [SELLI] Callback CRASH:", error);
       try {
         await ctx.editMessageText(`❌ Gagal memproses: ${error.message}`);
       } catch (e) {
