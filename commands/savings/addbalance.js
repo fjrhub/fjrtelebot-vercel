@@ -91,11 +91,50 @@ const states = new Map();
    UTIL
 ========================= */
 
-// input user → angka asli (menghapus titik pemisah ribuan)
+// input user → angka asli (menghapus titik pemisah ribuan & mendukung singkatan)
 const parseInputAmount = (text) => {
   if (!text) return 0;
-  const cleanedText = String(text).replace(/\./g, "").replace(",", ".");
-  return Number(cleanedText);
+  let str = String(text).trim().toLowerCase().replace(/\./g, "").replace(",", ".");
+  
+  // Hapus prefix 'Rp' jika user mengetiknya (contoh: Rp100k)
+  str = str.replace(/^rp/, "");
+  
+  // Mencocokkan angka dan singkatan di belakangnya (contoh: 10jt, 100k, 1.5 juta)
+  const match = str.match(/^([\d.]+)\s*(k|rb|ribu|m|jt|juta|b|miliar|mil|t|triliun)?/);
+  
+  if (!match) return Number(str) || 0;
+  
+  let value = parseFloat(match[1]);
+  const suffix = match[2] || "";
+  
+  if (isNaN(value)) return 0;
+  
+  switch (suffix) {
+    case "k":
+    case "rb":
+    case "ribu":
+      value *= 1000;
+      break;
+    case "m":
+    case "jt":
+    case "juta":
+      value *= 1000000;
+      break;
+    case "b":
+    case "miliar":
+    case "mil":
+      value *= 1000000000;
+      break;
+    case "t":
+    case "triliun":
+      value *= 1000000000000;
+      break;
+    default:
+      break;
+  }
+  
+  // Dibulatkan ke 2 angka di belakang koma untuk menghindari floating point error
+  return Math.round(value * 100) / 100;
 };
 
 // dari spreadsheet → USDT atau Rp
@@ -346,7 +385,7 @@ export default {
       case "deskripsi":
         return edit("Masukkan deskripsi:", kbText());
       case "jumlah":
-        return edit("Masukkan jumlah:", kbText());
+        return edit("Masukkan jumlah (bisa pakai singkatan: 100k, 10jt, 1,5jt):", kbText());
       case "akun":
         return edit("Pilih akun:", kbList(OPTIONS.akun, "addbalance:akun"));
       case "mataUang":
