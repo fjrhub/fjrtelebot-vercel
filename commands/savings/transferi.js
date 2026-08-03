@@ -131,9 +131,9 @@ export default {
         "`/transferi <asal> <tujuan> <jumlah>`\n" +
         "`/transferi <asal> <tujuan> <jumlah_kirim> <jumlah_terima>`\n\n" +
         "**Contoh:**\n" +
-        "• **Normal:** `/transferi Seabank Dana 100k`\n" +
-        "• **Ada Selisih:** `/transferi Seabank Dana 11k 10k`\n" +
-        "• **Pakai Deskripsi:** `/transferi -desc \"Bayar Hutang\" Seabank Dana 100k`\n\n" +
+        "• **Normal:** `/transferi wallet seabank 100k`\n" +
+        "• **Ada Selisih:** `/transferi wallet seabank 11k 10k`\n" +
+        "• **Pakai Deskripsi:** `/transferi -desc \"Setor Tunai\" wallet seabank 2jt`\n\n" +
         "*Tips: Flag `-desc` bisa ditaruh di posisi mana saja.*", 
         { parse_mode: "Markdown" }
       );
