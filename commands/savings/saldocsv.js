@@ -117,7 +117,7 @@ function generateCSV(rows) {
    COMMAND
 ========================= */
 export default {
-  name: "saldo_csv", // Nama command baru untuk CSV
+  name: "saldocsv", // Nama command baru untuk CSV
 
   async execute(ctx) {
     if (ctx.from?.id !== Number(process.env.OWNER_ID)) return;
