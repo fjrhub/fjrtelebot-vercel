@@ -2,20 +2,21 @@ import axios from "axios";
 import { createUrl } from "../../utils/api.js";
 
 // Konstanta untuk menghindari "magic numbers"
-const JAKARTA_LOCATION_ID = "1635";
+// Catatan: ID 1635 adalah Kota Mojokerto, bukan Jakarta.
+const MOJOKERTO_LOCATION_ID = "1635";
 
 export default {
   name: "sholat",
   /**
-   * Menampilkan jadwal sholat untuk wilayah Jakarta
+   * Menampilkan jadwal sholat untuk wilayah Mojokerto
    * @param {Object} ctx - Context object dari bot framework
    */
   async execute(ctx) {
     try {
-      // 1. Parsing Waktu Jakarta yang lebih robust menggunakan Intl API
+      // 1. Parsing Waktu Mojokerto (WIB) yang lebih robust menggunakan Intl API
       const now = new Date();
       const formatter = new Intl.DateTimeFormat("id-ID", {
-        timeZone: "Asia/Jakarta",
+        timeZone: "Asia/Jakarta", // Mojokerto berada di zona waktu WIB (Asia/Jakarta)
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
@@ -40,7 +41,7 @@ export default {
 
       // 2. Fetch Data
       const response = await axios.get(
-        createUrl("myquran", `/v2/sholat/jadwal/${JAKARTA_LOCATION_ID}/${year}/${month}/${day}`),
+        createUrl("myquran", `/v2/sholat/jadwal/${MOJOKERTO_LOCATION_ID}/${year}/${month}/${day}`),
         { timeout: 8000 }
       );
 
