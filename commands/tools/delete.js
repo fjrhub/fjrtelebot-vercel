@@ -7,13 +7,13 @@ export default {
 
     if (!replyMessage) {
       return ctx.reply(
-        "❌ Reply pesan yang ingin dihapus."
+        "❌ Please reply to the message you want to delete."
       );
     }
 
     if (!replyMessage.from?.is_bot) {
       return ctx.reply(
-        "❌ Hanya pesan bot yang dapat dihapus."
+        "❌ Only bot messages can be deleted."
       );
     }
 
@@ -23,16 +23,18 @@ export default {
         replyMessage.message_id
       );
 
-      // Hapus command pengguna (opsional)
+      // Delete the user's command message (optional)
       try {
         await ctx.deleteMessage();
-      } catch {}
+      } catch {
+        // silently ignore if we can't delete the command
+      }
 
     } catch (error) {
       console.error("[DELETE_COMMAND]", error);
 
       return ctx.reply(
-        "⚠️ Gagal menghapus pesan. Pesan mungkin sudah dihapus atau bot tidak memiliki izin."
+        "⚠️ Failed to delete the message. It might already be deleted or the bot lacks permissions."
       );
     }
   },
