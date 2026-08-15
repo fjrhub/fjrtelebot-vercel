@@ -4,7 +4,7 @@ import { google } from "googleapis";
    OPTIONS & STATE
 ========================= */
 const OPTIONS = {
-  akun: ["Wallet", "Dana", "Seabank", "Bank", "Fjlsaldo", "Gopay"],
+  akun: ["Wallet", "Dana", "Seabank", "Bank", "Fjlsaldo", "Gopay", "Jago"],
 };
 const states = new Map();
 
