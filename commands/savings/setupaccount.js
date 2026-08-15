@@ -1,14 +1,6 @@
 import { google } from "googleapis";
 
 /* =========================
-   OPTIONS
-========================= */
-const OPTIONS = {
-  akun: ["Wallet", "Dana", "Seabank", "Bank", "Binance", "Fjlsaldo", "Gopay"],
-  mataUang: ["Rp", "USDT"],
-};
-
-/* =========================
    STATE
 ========================= */
 const states = new Map();
@@ -22,36 +14,19 @@ const toNumber = (v) =>
 const formatNumber = (n) =>
   new Intl.NumberFormat("id-ID").format(n);
 
-const formatAmount = (amount, currency) => {
-  if (currency === "Rp") {
+const formatAmount = (amount, currency = "IDR") => {
+  if (currency === "Rp" || currency === "IDR") {
     return `Rp${formatNumber(amount)}`;
   }
   return `${formatNumber(amount)} ${currency}`;
 };
 
-// ✅ Keyboard dengan opsi back/cancel
-const kbList = (list, prefix, perRow = 2, showBack = false, showCancel = false) => {
-  const keyboard = [];
-  for (let i = 0; i < list.length; i += perRow) {
-    keyboard.push(
-      list.slice(i, i + perRow).map((v) => ({
-        text: v,
-        callback_data: `${prefix}:${v}`,
-      }))
-    );
-  }
-  const footer = [];
-  if (showBack) footer.push({ text: "⬅️ Back", callback_data: "setupaccount:back" });
-  if (showCancel) footer.push({ text: "❌ Cancel", callback_data: "setupaccount:cancel" });
-  if (footer.length > 0) keyboard.push(footer);
-  return { inline_keyboard: keyboard };
-};
-
+// ✅ Keyboard teks dengan opsi back/cancel
 const kbText = (showBack = false) => {
-  if (showBack) {
-    return { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "setupaccount:back" }]] };
-  }
-  return { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }]] };
+  const row = [];
+  if (showBack) row.push({ text: "⬅️ Back", callback_data: "setupaccount:back" });
+  row.push({ text: "❌ Cancel", callback_data: "setupaccount:cancel" });
+  return { inline_keyboard: [row] };
 };
 
 const kbConfirm = () => ({
@@ -118,7 +93,7 @@ async function appendInitialBalance(data) {
           "Balance",
           "Initial balance",
           data.jumlah,
-          data.mataUang,
+          "IDR", // Default ke IDR
           data.akun,
           "System",
           0,
@@ -144,8 +119,8 @@ export default {
 
     const rows = await fetchAllRows();
     const msg = await ctx.reply(
-      "Pilih akun yang ingin diset saldo awalnya:",
-      { reply_markup: kbList(OPTIONS.akun, "setupaccount:akun", 2, false, true) }
+      "Ketik nama akun yang ingin diset saldo awalnya:",
+      { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }]] } }
     );
 
     states.set(ctx.from.id, {
@@ -154,6 +129,7 @@ export default {
       rows,
       chatId: ctx.chat.id,
       messageId: msg.message_id,
+      mataUang: "IDR",
     });
   },
 
@@ -183,33 +159,9 @@ export default {
         ctx,
         state.chatId,
         state.messageId,
-        `✅ *Saldo awal berhasil disimpan*\n\nAkun       : ${state.akun}\nSaldo Awal : *${formatAmount(state.jumlah, state.mataUang)}*\nMata Uang  : ${state.mataUang}\nMetode     : System\nTag        : #Initial`,
+        `✅ *Saldo awal berhasil disimpan*\n\nAkun       : ${state.akun}\nSaldo Awal : *${formatAmount(state.jumlah, "IDR")}*\nMata Uang  : IDR\nMetode     : System\nTag        : #Initial`,
         { inline_keyboard: [] }
       );
-    }
-
-    const [, step, value] = data.split(":");
-
-    // Simpan riwayat sebelum ganti langkah
-    state.history.push(state.step);
-
-    if (step === "akun") {
-      if (hasInitialBalance(state.rows, value)) {
-        state.history.pop(); // undo push
-        return ctx.answerCallbackQuery({
-          text: "Akun ini sudah memiliki saldo awal.",
-          show_alert: true,
-        });
-      }
-      state.akun = value;
-      state.step = "jumlah";
-      return this.render(ctx, state);
-    }
-
-    if (step === "mataUang") {
-      state.mataUang = value;
-      state.step = "confirm";
-      return this.render(ctx, state);
     }
   },
 
@@ -220,9 +172,37 @@ export default {
     await ctx.deleteMessage().catch(() => {});
     state.history.push(state.step);
 
+    if (state.step === "akun") {
+      const akunName = ctx.message.text.trim();
+      if (hasInitialBalance(state.rows, akunName)) {
+        state.history.pop(); // undo push
+        return safeEdit(
+          ctx,
+          state.chatId,
+          state.messageId,
+          `❌ Akun *${akunName}* sudah memiliki saldo awal.\n\nKetik nama akun lain:`,
+          { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }]] }
+        );
+      }
+      state.akun = akunName;
+      state.step = "jumlah";
+      return this.render(ctx, state);
+    }
+
     if (state.step === "jumlah") {
-      state.jumlah = toNumber(ctx.message.text);
-      state.step = "mataUang";
+      const num = toNumber(ctx.message.text);
+      if (isNaN(num) || num <= 0) {
+        state.history.pop();
+        return safeEdit(
+          ctx,
+          state.chatId,
+          state.messageId,
+          `❌ Format salah! Masukkan *saldo awal* untuk akun *${state.akun}*:\n\nFormat: 100000 atau 100.000`,
+          kbText(true)
+        );
+      }
+      state.jumlah = num;
+      state.step = "confirm";
       return this.render(ctx, state);
     }
   },
@@ -234,8 +214,8 @@ export default {
           ctx,
           state.chatId,
           state.messageId,
-          "Pilih akun yang ingin diset saldo awalnya:",
-          kbList(OPTIONS.akun, "setupaccount:akun", 2, false, true)
+          "Ketik nama akun yang ingin diset saldo awalnya:",
+          { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "setupaccount:cancel" }]] }
         );
       case "jumlah":
         return safeEdit(
@@ -245,20 +225,12 @@ export default {
           `Masukkan *saldo awal* untuk akun *${state.akun}*:\n\nFormat: 100000 atau 100.000`,
           kbText(true)
         );
-      case "mataUang":
-        return safeEdit(
-          ctx,
-          state.chatId,
-          state.messageId,
-          "Pilih mata uang:",
-          kbList(OPTIONS.mataUang, "setupaccount:mataUang", 2, true, false)
-        );
       case "confirm":
         return safeEdit(
           ctx,
           state.chatId,
           state.messageId,
-          `🧾 *Konfirmasi Setup Akun*\n\nAkun       : ${state.akun}\nSaldo Awal : *${formatAmount(state.jumlah, state.mataUang)}*\nMata Uang  : ${state.mataUang}\n\nLanjutkan?`,
+          `🧾 *Konfirmasi Setup Akun*\n\nAkun       : ${state.akun}\nSaldo Awal : *${formatAmount(state.jumlah, "IDR")}*\nMata Uang  : IDR\n\nLanjutkan?`,
           kbConfirm()
         );
     }
