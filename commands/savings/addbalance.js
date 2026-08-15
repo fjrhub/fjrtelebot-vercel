@@ -78,7 +78,7 @@ const OPTIONS = {
     },
   },
 
-  akun: ["Wallet", "Dana", "Gopay", "Seabank", "Bank", "Binance", "Fjlsaldo"],
+  akun: ["Wallet", "Dana", "Gopay", "Seabank", "Bank", "Binance", "Fjlsaldo", "Jago"],
   metode: ["Cash", "Transfer", "QRIS", "Debit", "Virtual Account"],
   mataUang: ["Rp", "USDT"],
 };
