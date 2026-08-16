@@ -8,7 +8,7 @@ const DISCORD_HOSTS = [
 ];
 
 export default {
-  name: "img",
+  name: "dc",
   async execute(ctx) {
     try {
       const url = extractUrl(ctx);
