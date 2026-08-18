@@ -5,23 +5,19 @@ export default {
     const userId = ctx.from?.id;
     if (!chatId) return;
 
-    // Ambil teks atau caption
     const input = ctx.message?.text?.trim() || ctx.message?.caption?.trim();
     if (!input) return;
 
-    // === 1. PARSING INPUT (URL + SLIDE EXCLUSION) ===
+    // 1. Parsing URL & Slide
     let mediaUrl = input;
     let excludedSlides = [];
     const match = input.match(/^(.+?)\s*-\s*(\d+)$/);
     if (match) {
       mediaUrl = match[1].trim();
-      excludedSlides = match[2]
-        .split("")
-        .map(Number)
-        .filter((n) => !isNaN(n));
+      excludedSlides = match[2].split("").map(Number).filter((n) => !isNaN(n));
     }
 
-    // === 2. CEK REGEX (Hanya URL Sosmed yang diproses) ===
+    // 2. Cek Regex
     const tiktokRegex = /^(?:https?:\/\/)?(?:www\.|vm\.|vt\.)?tiktok\.com\/[^\s]+$/i;
     const instagramRegex = /^(?:https?:\/\/)?(?:www\.)?instagram\.com\/(reel|p|tv)\/[A-Za-z0-9_-]+\/?(?:\?[^ ]*)?$/i;
     const facebookRegex = /^(?:https?:\/\/)?(?:www\.|web\.)?facebook\.com\/(?:share\/(?:r|v|p)\/|reel\/|watch\?v=|permalink\.php\?story_fbid=|[^\/]+\/posts\/|video\.php\?v=)[^\s]+$/i;
@@ -30,45 +26,37 @@ export default {
     const isInstagram = instagramRegex.test(mediaUrl);
     const isFacebook = facebookRegex.test(mediaUrl);
 
-    // Kalau BUKAN URL sosmed yang didukung, keluar (biar command bot lain jalan normal)
     if (!isTikTok && !isInstagram && !isFacebook) return;
 
-    // === 3. HAPUS PESAN USER (Fire & Forget) ===
-    // Kita hapus pesan link-nya biar chat bersih, gak usah ditunggu (await)
-    ctx.api.deleteMessage(chatId, ctx.message.message_id).catch(() => {});
+    console.log(`[Vercel] 🚨 URL Terdeteksi! Platform: ${isTikTok ? 'TikTok' : isInstagram ? 'Instagram' : 'Facebook'}`);
+    console.log(`[Vercel] Menghapus pesan ID: ${ctx.message.message_id}`);
+    
+    // Hapus Pesan
+    ctx.api.deleteMessage(chatId, ctx.message.message_id).catch((err) => console.log("[Vercel] Gagal hapus pesan:", err.message));
 
-    // === 4. SIAPKAN DATA UNTUK DENO ===
+    // 3. Siapkan Payload
     const platform = isTikTok ? "TikTok" : isInstagram ? "Instagram" : "Facebook";
-    const username = ctx.from.username;
-    const firstName = ctx.from.first_name;
-    const mention = username ? `@${username}` : firstName;
+    const mention = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
 
-    const payload = {
-      chatId,
-      userId,
-      url: mediaUrl,
-      excludedSlides,
-      platform,
-      mention,
-    };
+    const payload = { chatId, userId, url: mediaUrl, excludedSlides, platform, mention };
+    console.log(`[Vercel] Mengirim payload ke Deno:`, payload);
+    console.log(`[Vercel] Target URL: ${process.env.DENO_ENDPOINT_URL}`);
 
-    // === 5. KIRIM KE DENO (FIRE AND FORGET) ===
-    const DENO_URL = process.env.DENO_ENDPOINT_URL;
-    const SECRET = process.env.API_SECRET;
-
-    if (DENO_URL && SECRET) {
-      // JANGAN PAKAI AWAIT! Biarkan Vercel langsung selesai (return), 
-      // sementara fetch jalan di background menuju Deno.
-      fetch(DENO_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-vercel-secret": SECRET,
-        },
-        body: JSON.stringify(payload),
-      }).catch((err) => console.error("[Vercel] Gagal fetch Deno:", err));
-    } else {
-      console.warn("[Vercel] Env DENO_ENDPOINT_URL atau API_SECRET belum diset!");
-    }
+    // 4. Fetch ke Deno (Dengan Logging Response)
+    fetch(process.env.DENO_ENDPOINT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-vercel-secret": process.env.API_SECRET,
+      },
+      body: JSON.stringify(payload),
+    })
+      .then(async (res) => {
+        const text = await res.text();
+        console.log(`[Vercel] ✅ Deno merespon! Status: ${res.status} | Body: ${text}`);
+      })
+      .catch((err) => {
+        console.error(`[Vercel] ❌ Gagal fetch ke Deno:`, err.message);
+      });
   },
 };
