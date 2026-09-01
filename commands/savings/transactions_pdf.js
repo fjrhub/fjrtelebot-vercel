@@ -4,7 +4,7 @@ import { InputFile } from "grammy";
 /* =========================
    CONFIG
 ========================= */
-const TARGET_ACCOUNTS = ["Wallet", "Seabank", "Dana", "Bank", "Fjlsaldo", "Gopay"];
+const TARGET_ACCOUNTS = ["Wallet", "Seabank", "Dana", "Bank", "Fjlsaldo", "Gopay", "Jago"];
 
 /* =========================
    GOOGLE SHEETS
