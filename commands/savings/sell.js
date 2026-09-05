@@ -8,9 +8,8 @@ const OPTIONS = {
   akun: ["Wallet", "Dana", "Seabank", "Bank", "Fjlsaldo", "Gopay"],
   quickPairs: [
     { label: "Seabank ➔ Wallet", keluar: "Seabank", masuk: "Wallet" },
-    { label: "Dana ➔ Bank", keluar: "Dana", masuk: "Bank" },
-    { label: "Gopay ➔ Seabank", keluar: "Gopay", masuk: "Seabank" },
-    { label: "Wallet ➔ Bank", keluar: "Wallet", masuk: "Bank" },
+    { label: "Fjlsaldo ➔ Wallet", keluar: "Fjlsaldo", masuk: "Wallet" },
+    { label: "Gopay ➔ Wallet", keluar: "Gopay", masuk: "Wallet" },
   ],
 };
 
