@@ -34,8 +34,14 @@ async function fetchAllRows() {
 const formatToShort = (n) => {
   const num = Number(n);
   if (Number.isNaN(num)) return "0";
-  if (num >= 1000000) return `${(num / 1000000).toString().replace(/\.0$/, '')}jt`;
-  if (num >= 1000) return `${(num / 1000).toString().replace(/\.0$/, '')}K`;
+  if (num >= 1000000) {
+    const val = (num / 1000000).toString().replace('.', ',');
+    return val.replace(/,0$/, '') + 'jt';
+  }
+  if (num >= 1000) {
+    const val = (num / 1000).toString().replace('.', ',');
+    return val.replace(/,0$/, '') + 'K';
+  }
   return String(num);
 };
 
@@ -63,7 +69,6 @@ export default {
       console.log(`🔄 [RESELLI] Mencari transaksi untuk tanggal: ${targetDate}`);
       const allRows = await fetchAllRows();
 
-      // Filter baris berdasarkan tanggal (kolom indeks 12 adalah timestamp ISO)
       const dateRows = allRows
         .map((r, idx) => ({ row: r, idx }))
         .filter(({ row }) => {
@@ -76,11 +81,9 @@ export default {
         return ctx.reply(`❌ Tidak ditemukan transaksi apa pun untuk tanggal: ${targetDate}`);
       }
 
-      // Cari pasangan Usaha > Penjualan (grouping by deskripsi)
       const processedIdx = new Set();
       const entries = [];
 
-      // Group by deskripsi
       const byDesc = {};
       for (const item of dateRows) {
         const desc = item.row[3] || `__nonedesc_${item.idx}`;
@@ -88,14 +91,12 @@ export default {
         byDesc[desc].push(item);
       }
 
-      // Cari pasangan Pengeluaran + Pemasukan yang keduanya Usaha > Penjualan
       for (const desc in byDesc) {
         const group = byDesc[desc];
         const pengeluaran = group.find(i => i.row[0] === 'Pengeluaran' && i.row[1] === 'Usaha' && i.row[2] === 'Penjualan');
         const pemasukan = group.find(i => i.row[0] === 'Pemasukan' && i.row[1] === 'Usaha' && i.row[2] === 'Penjualan');
 
         if (pengeluaran && pemasukan) {
-          // Jadikan pasangan /selli
           const time = new Date(pemasukan.row[12]).getTime();
           const akunKeluar = pengeluaran.row[6] || "TidakDiketahui";
           const akunMasuk = pemasukan.row[6] || "TidakDiketahui";
@@ -110,7 +111,6 @@ export default {
         }
       }
 
-      // Sisanya: tampilkan sebagai /addbalance atau /expense
       for (const item of dateRows) {
         if (processedIdx.has(item.idx)) continue;
         const row = item.row;
@@ -126,16 +126,14 @@ export default {
         } else if (type === 'Pengeluaran') {
           command = `/expense ${akun} ${jumlah} -desc "${desc}"`;
         } else {
-          continue; // skip kalau bukan pemasukan/pengeluaran
+          continue;
         }
 
         entries.push({ time, command });
       }
 
-      // Urutkan semua entries berdasarkan waktu (ascending)
       entries.sort((a, b) => a.time - b.time);
 
-      // Bangun output
       let resultText = `📅 **Transaksi pada: ${targetDate}**\n\n`;
       entries.forEach((e, i) => {
         resultText += `**${i + 1}.** \`${e.command}\`\n`;
