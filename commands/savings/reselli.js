@@ -32,12 +32,13 @@ async function fetchLatestTwoRows() {
 /* =========================
    UTIL
 ========================= */
-// Mengubah angka kembali ke format singkat (misal: 20000 -> 20K, 1500000 -> 1.5jt)
+// Mengubah angka ke format singkat (misal: 20000 -> 20K, 1500000 -> 1.5jt)
 const formatToShort = (n) => {
   const num = Number(n);
-  if (num >= 1000000 && num % 1000000 === 0) return `${num / 1000000}jt`;
-  if (num >= 1000 && num % 1000 === 0) return `${num / 1000}K`;
-  return String(num); // Jika tidak bulat, kembalikan angka asli
+  if (Number.isNaN(num)) return "0"; // Fallback aman jika data bukan angka
+  if (num >= 1000000) return `${(num / 1000000).toString().replace(/\.0$/, '')}jt`;
+  if (num >= 1000) return `${(num / 1000).toString().replace(/\.0$/, '')}K`;
+  return String(num);
 };
 
 /* =========================
@@ -65,15 +66,20 @@ export default {
       const rowKeluar = latestRows.find(r => r[0] === "Pengeluaran");
       const rowMasuk = latestRows.find(r => r[0] === "Pemasukan");
 
-      if (!rowKeluar || !rowMasuk) {
-        return ctx.reply("❌ 2 data terbaru bukan merupakan pasangan transaksi Selli (Pengeluaran & Pemasukan).");
+      // PERBAIKAN: Beritahu secara spesifik mana yang tidak ada
+      if (!rowKeluar && !rowMasuk) {
+        return ctx.reply("❌ Tidak ditemukan data Pengeluaran maupun Pemasukan di 2 transaksi terbaru.");
+      }
+      if (!rowKeluar) {
+        return ctx.reply("❌ Tidak ditemukan data Pengeluaran di 2 transaksi terbaru (hanya ada Pemasukan).");
+      }
+      if (!rowMasuk) {
+        return ctx.reply("❌ Tidak ditemukan data Pemasukan di 2 transaksi terbaru (hanya ada Pengeluaran).");
       }
 
-      // Mapping index berdasarkan struktur Sheet Anda:
-      // 0: jenis, 1: kategori, 2: subKategori, 3: deskripsi, 4: jumlah, 5: mataUang, 
-      // 6: akun, 7: metode, 8: saldoSebelum, 9: saldoSesudah, 10: tag, 11: catatan
-      const akunKeluar = rowKeluar[6];
-      const akunMasuk = rowMasuk[6];
+      // Mapping index dengan fallback aman jika kolom kosong
+      const akunKeluar = rowKeluar[6] || "TidakDiketahui";
+      const akunMasuk = rowMasuk[6] || "TidakDiketahui";
       const jumlahKeluar = formatToShort(rowKeluar[4]);
       const jumlahMasuk = formatToShort(rowMasuk[4]);
       const deskripsi = rowKeluar[3] || rowMasuk[3] || "Tanpa Deskripsi";
