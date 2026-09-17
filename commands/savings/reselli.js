@@ -29,6 +29,16 @@ async function fetchLatestTwoRows() {
   return rows.slice(-2); // Ambil 2 baris paling bawah (terbaru)
 }
 
+async function fetchAllRows() {
+  if (!process.env.SPREADSHEET_ID) throw new Error("SPREADSHEET_ID tidak ditemukan di .env");
+  const sheets = sheetsClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: "Sheet1!A2:N",
+  });
+  return res.data.values || [];
+}
+
 /* =========================
    UTIL
 ========================= */
@@ -55,6 +65,65 @@ export default {
         return ctx.reply("⛔ Akses ditolak. Hanya owner yang dapat menggunakan perintah ini.");
       }
 
+      const args = (ctx.message?.text || "").split(/\s+/);
+      const targetDate = args[1];
+
+      // Jika ada argumen tanggal, cari semua transaksi di tanggal tersebut
+      if (targetDate) {
+        console.log(`🔄 [RESELLI] Mencari transaksi untuk tanggal: ${targetDate}`);
+        const allRows = await fetchAllRows();
+        
+        // Filter baris yang mengandung tanggal (cek kolom indeks 12 [dibuatPada] atau 0 [jenis/tanggal])
+        const matchedRows = allRows.filter(r => {
+          const col0 = String(r[0] || "").toLowerCase();
+          const col12 = String(r[12] || "").toLowerCase();
+          const searchDate = targetDate.toLowerCase();
+          return col0.includes(searchDate) || col12.includes(searchDate);
+        });
+
+        if (matchedRows.length === 0) {
+          return ctx.reply(`❌ Tidak ditemukan transaksi untuk tanggal: ${targetDate}`);
+        }
+
+        const pengeluaranRows = matchedRows.filter(r => String(r[0]).toLowerCase() === "pengeluaran");
+        const pemasukanRows = matchedRows.filter(r => String(r[0]).toLowerCase() === "pemasukan");
+
+        if (pengeluaranRows.length === 0 && pemasukanRows.length === 0) {
+          return ctx.reply(`❌ Ditemukan data pada tanggal ${targetDate}, tetapi bukan transaksi Pengeluaran/Pemasukan.`);
+        }
+
+        let resultText = `📅 **Transaksi pada tanggal: ${targetDate}**\n\n`;
+        const maxPairs = Math.max(pengeluaranRows.length, pemasukanRows.length);
+        
+        for (let i = 0; i < maxPairs; i++) {
+          const rowKeluar = pengeluaranRows[i];
+          const rowMasuk = pemasukanRows[i];
+
+          if (rowKeluar && rowMasuk) {
+            const akunKeluar = rowKeluar[6] || "TidakDiketahui";
+            const akunMasuk = rowMasuk[6] || "TidakDiketahui";
+            const jumlahKeluar = formatToShort(rowKeluar[4]);
+            const jumlahMasuk = formatToShort(rowMasuk[4]);
+            const deskripsi = rowKeluar[3] || rowMasuk[3] || "Tanpa Deskripsi";
+            const commandString = `/selli ${akunKeluar} ${akunMasuk} ${jumlahKeluar} ${jumlahMasuk} -desc "${deskripsi}"`;
+            resultText += `**Pasangan ${i + 1}:**\n\`${commandString}\`\n\n`;
+          } else if (rowKeluar) {
+            const akunKeluar = rowKeluar[6] || "TidakDiketahui";
+            const jumlahKeluar = formatToShort(rowKeluar[4]);
+            const deskripsi = rowKeluar[3] || "Tanpa Deskripsi";
+            resultText += `**Pengeluaran ${i + 1}:**\n\`/expense ${akunKeluar} ${jumlahKeluar} -desc "${deskripsi}"\`\n\n`;
+          } else if (rowMasuk) {
+            const akunMasuk = rowMasuk[6] || "TidakDiketahui";
+            const jumlahMasuk = formatToShort(rowMasuk[4]);
+            const deskripsi = rowMasuk[3] || "Tanpa Deskripsi";
+            resultText += `**Pemasukan ${i + 1}:**\n\`/income ${akunMasuk} ${jumlahMasuk} -desc "${deskripsi}"\`\n\n`;
+          }
+        }
+
+        return ctx.reply(resultText.trim(), { parse_mode: "Markdown" });
+      }
+
+      // Fallback: Perilaku asli (ambil 2 data terbaru)
       console.log("🔄 [RESELLI] Mengambil 2 data transaksi terbaru...");
       const latestRows = await fetchLatestTwoRows();
 
@@ -63,8 +132,8 @@ export default {
       }
 
       // Cari pasangan Pengeluaran dan Pemasukan
-      const rowKeluar = latestRows.find(r => r[0] === "Pengeluaran");
-      const rowMasuk = latestRows.find(r => r[0] === "Pemasukan");
+      const rowKeluar = latestRows.find(r => String(r[0]).toLowerCase() === "pengeluaran");
+      const rowMasuk = latestRows.find(r => String(r[0]).toLowerCase() === "pemasukan");
 
       // PERBAIKAN: Beritahu secara spesifik mana yang tidak ada
       if (!rowKeluar && !rowMasuk) {
