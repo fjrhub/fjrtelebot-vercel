@@ -15,36 +15,51 @@ export default {
       
       if (!url) {
         return await ctx.reply(
-          "⚠️ Usage format:\n/img https://media.discordapp.net/attachments/...\n\nOnly Discord CDN URLs are supported."
+          "⚠️ Format penggunaan:\n/dc https://media.discordapp.net/attachments/...\n\nHanya URL CDN Discord yang didukung."
         );
       }
 
       if (!isValidDiscordUrl(url)) {
         return await ctx.reply(
-          "❌ Only Discord CDN URLs are supported.\n\nExample:\nhttps://media.discordapp.net/attachments/..."
+          "❌ Hanya URL CDN Discord yang didukung.\n\nContoh:\nhttps://media.discordapp.net/attachments/..."
         );
       }
 
-      const imageBuffer = await fetchImage(url);
+      const image = await fetchImage(url);
       
-      if (!imageBuffer) {
-        return await ctx.reply("❌ Failed to fetch image from the provided link.");
+      if (!image) {
+        return await ctx.reply("❌ Gagal mengambil gambar dari tautan. Tautan mungkin kedaluwarsa, kadaluarsa, atau tidak valid.");
       }
 
-      await ctx.replyWithPhoto(new InputFile(imageBuffer, "image.png"));
+      const filename = getFilenameFromUrl(url);
+      
+      await ctx.replyWithPhoto(new InputFile(image.data, filename));
       await ctx.deleteMessage().catch(() => {});
     } catch (err) {
-      console.error("IMG Command Error:", err);
-      await ctx.reply("❌ An error occurred.");
+      console.error("DC Command Error:", err);
+      
+      // Penanganan error spesifik untuk batas ukuran/dimensi dari Telegram API
+      if (err.message?.includes("IMAGE_PROCESS_FAILED") || err.message?.includes("PHOTO_INVALID_DIMENSIONS")) {
+        await ctx.reply("❌ Telegram gagal memproses gambar. Gambar mungkin terlalu besar atau formatnya tidak didukung.");
+      } else {
+        await ctx.reply("❌ Terjadi kesalahan tak terduga saat mengirim gambar.");
+      }
     }
   },
 };
 
 function extractUrl(ctx) {
-  const text = ctx.message?.text?.trim() || "";
-  const args = text.split(" ").slice(1);
+  // Mendukung ekstraksi dari teks biasa maupun caption
+  const text = ctx.message?.text?.trim() || ctx.message?.caption?.trim() || "";
+  const args = text.split(/\s+/).slice(1);
   
-  if (!args.length) return null;
+  if (!args.length) {
+    // Fallback: Cek apakah command ini adalah balasan (reply) ke pesan yang mengandung URL
+    const replyText = ctx.message?.reply_to_message?.text || ctx.message?.reply_to_message?.caption || "";
+    const replyUrls = replyText.match(/https?:\/\/[^\s]+/g);
+    if (replyUrls && replyUrls.length > 0) return replyUrls[0];
+    return null;
+  }
   
   const url = args[0];
   
@@ -52,7 +67,9 @@ function extractUrl(ctx) {
     new URL(url);
     return url;
   } catch {
-    return null;
+    // Fallback: cari URL di dalam teks jika argumen pertama bukan URL yang valid
+    const urls = text.match(/https?:\/\/[^\s]+/g);
+    return urls ? urls[0] : null;
   }
 }
 
@@ -66,10 +83,36 @@ function isValidDiscordUrl(url) {
 }
 
 async function fetchImage(url) {
-  const res = await fetch(url);
+  try {
+    const res = await fetch(url);
+    
+    if (!res.ok) return null;
+    
+    // Validasi Content-Type untuk memastikan yang diunduh benar-benar gambar
+    const contentType = res.headers.get('content-type');
+    if (contentType && !contentType.startsWith('image/')) {
+        return null;
+    }
+
+    const buffer = await res.arrayBuffer();
+    return { data: new Uint8Array(buffer), contentType };
+  } catch (err) {
+    console.error("Fetch error:", err);
+    return null;
+  }
+}
+
+function getFilenameFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split('/');
+    const filename = parts[parts.length - 1];
+    
+    // Ambil nama file asli beserta ekstensinya (.gif, .webp, dll)
+    if (filename && filename.includes('.')) {
+      return decodeURIComponent(filename);
+    }
+  } catch {}
   
-  if (!res.ok) return null;
-  
-  const buffer = await res.arrayBuffer();
-  return new Uint8Array(buffer);
+  return "discord-image.jpg"; // Fallback default
 }
