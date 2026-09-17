@@ -62,82 +62,84 @@ export default {
 
       console.log(`🔄 [RESELLI] Mencari transaksi untuk tanggal: ${targetDate}`);
       const allRows = await fetchAllRows();
-      
-      // Filter baris berdasarkan tanggal (kolom indeks 12 adalah timestamp)
-      const dateRows = allRows.filter(r => {
-        if (!r || !r[12]) return false;
-        const rowDateStr = r[12].split('T')[0]; // Ambil "2026-09-17" dari "2026-09-17T19:24:43.578Z"
-        return rowDateStr === targetDate;
-      });
+
+      // Filter baris berdasarkan tanggal (kolom indeks 12 adalah timestamp ISO)
+      const dateRows = allRows
+        .map((r, idx) => ({ row: r, idx }))
+        .filter(({ row }) => {
+          if (!row || !row[12]) return false;
+          const rowDateStr = row[12].split('T')[0];
+          return rowDateStr === targetDate;
+        });
 
       if (dateRows.length === 0) {
         return ctx.reply(`❌ Tidak ditemukan transaksi apa pun untuk tanggal: ${targetDate}`);
       }
 
-      // Pisahkan: Usaha > Penjualan vs Lainnya
-      const usahaRows = dateRows.filter(r => r[1] === 'Usaha' && r[2] === 'Penjualan');
-      const otherRows = dateRows.filter(r => !(r[1] === 'Usaha' && r[2] === 'Penjualan'));
+      // Cari pasangan Usaha > Penjualan (grouping by deskripsi)
+      const processedIdx = new Set();
+      const entries = [];
 
-      // 1. Proses Pasangan Usaha > Penjualan (Grouping by Deskripsi)
-      const pairs = [];
-      const processedDescs = new Set();
+      // Group by deskripsi
+      const byDesc = {};
+      for (const item of dateRows) {
+        const desc = item.row[3] || `__nonedesc_${item.idx}`;
+        if (!byDesc[desc]) byDesc[desc] = [];
+        byDesc[desc].push(item);
+      }
 
-      for (const row of usahaRows) {
-        const desc = row[3];
-        if (processedDescs.has(desc)) continue;
-        
-        const pengeluaran = usahaRows.find(r => r[3] === desc && r[0] === 'Pengeluaran');
-        const pemasukan = usahaRows.find(r => r[3] === desc && r[0] === 'Pemasukan');
+      // Cari pasangan Pengeluaran + Pemasukan yang keduanya Usaha > Penjualan
+      for (const desc in byDesc) {
+        const group = byDesc[desc];
+        const pengeluaran = group.find(i => i.row[0] === 'Pengeluaran' && i.row[1] === 'Usaha' && i.row[2] === 'Penjualan');
+        const pemasukan = group.find(i => i.row[0] === 'Pemasukan' && i.row[1] === 'Usaha' && i.row[2] === 'Penjualan');
 
         if (pengeluaran && pemasukan) {
-          pairs.push({
-            desc,
-            pengeluaran,
-            pemasukan,
-            time: new Date(pemasukan[12]).getTime() // Untuk sorting
+          // Jadikan pasangan /selli
+          const time = new Date(pemasukan.row[12]).getTime();
+          const akunKeluar = pengeluaran.row[6] || "TidakDiketahui";
+          const akunMasuk = pemasukan.row[6] || "TidakDiketahui";
+          const jmlKeluar = formatToShort(pengeluaran.row[4]);
+          const jmlMasuk = formatToShort(pemasukan.row[4]);
+          entries.push({
+            time,
+            command: `/selli ${akunKeluar} ${akunMasuk} ${jmlKeluar} ${jmlMasuk} -desc "${desc}"`
           });
-          processedDescs.add(desc);
+          processedIdx.add(pengeluaran.idx);
+          processedIdx.add(pemasukan.idx);
         }
       }
 
-      // Urutkan pasangan berdasarkan waktu (ascending)
-      pairs.sort((a, b) => a.time - b.time);
+      // Sisanya: tampilkan sebagai /addbalance atau /expense
+      for (const item of dateRows) {
+        if (processedIdx.has(item.idx)) continue;
+        const row = item.row;
+        const type = row[0];
+        const akun = row[6] || 'TidakDiketahui';
+        const jumlah = formatToShort(row[4]);
+        const desc = row[3] || 'Tanpa Deskripsi';
+        const time = new Date(row[12]).getTime();
 
-      // 2. Proses Transaksi Lainnya (Urutkan berdasarkan waktu)
-      const others = otherRows.map(r => ({
-        type: r[0],
-        akun: r[6] || 'TidakDiketahui',
-        jumlah: formatToShort(r[4]),
-        desc: r[3] || 'Tanpa Deskripsi',
-        time: new Date(r[12]).getTime()
-      })).sort((a, b) => a.time - b.time);
+        let command;
+        if (type === 'Pemasukan') {
+          command = `/addbalance ${akun} ${jumlah} -desc "${desc}"`;
+        } else if (type === 'Pengeluaran') {
+          command = `/expense ${akun} ${jumlah} -desc "${desc}"`;
+        } else {
+          continue; // skip kalau bukan pemasukan/pengeluaran
+        }
 
-      // 3. Bangun Output String
-      let resultText = `📅 **Transaksi Usaha > Penjualan pada: ${targetDate}**\n\n`;
-      
-      if (pairs.length === 0) {
-        resultText += "_Tidak ada transaksi Usaha > Penjualan pada tanggal ini._\n";
-      } else {
-        pairs.forEach((pair, i) => {
-          const akunKeluar = pair.pengeluaran[6] || "TidakDiketahui";
-          const akunMasuk = pair.pemasukan[6] || "TidakDiketahui";
-          const jmlKeluar = formatToShort(pair.pengeluaran[4]);
-          const jmlMasuk = formatToShort(pair.pemasukan[4]);
-          const cmd = `/selli ${akunKeluar} ${akunMasuk} ${jmlKeluar} ${jmlMasuk} -desc "${pair.desc}"`;
-          resultText += `**${i + 1}.** \`${cmd}\`\n`;
-        });
+        entries.push({ time, command });
       }
 
-      if (others.length > 0) {
-        resultText += `\n➖➖➖➖➖➖➖➖➖➖➖➖\n`;
-        resultText += `📌 **Transaksi Lainnya (Non-Penjualan):**\n\n`;
-        others.forEach((item, i) => {
-          const cmd = item.type === 'Pemasukan' 
-            ? `/addbalance ${item.akun} ${item.jumlah} -desc "${item.desc}"`
-            : `/expense ${item.akun} ${item.jumlah} -desc "${item.desc}"`;
-          resultText += `**${i + 1}.** \`${cmd}\`\n`;
-        });
-      }
+      // Urutkan semua entries berdasarkan waktu (ascending)
+      entries.sort((a, b) => a.time - b.time);
+
+      // Bangun output
+      let resultText = `📅 **Transaksi pada: ${targetDate}**\n\n`;
+      entries.forEach((e, i) => {
+        resultText += `**${i + 1}.** \`${e.command}\`\n`;
+      });
 
       return ctx.reply(resultText.trim(), { parse_mode: "Markdown" });
 
