@@ -17,6 +17,7 @@ const OPTIONS = {
       "Belanja",
       "Investasi",
       "Hutang",
+      "Keluarga",
       "Penyesuaian",
       "Lainnya",
     ],
@@ -27,6 +28,7 @@ const OPTIONS = {
       "Hadiah", 
       "Refund", 
       "Hutang", 
+      "Keluarga",
       "Penyesuaian", 
       "Lainnya"
     ],
@@ -63,6 +65,13 @@ const OPTIONS = {
       Belanja: ["Online", "Offline", "Langganan"],
       Investasi: ["Crypto", "Saham", "Emas", "Reksa Dana"],
       Hutang: ["Bayar Hutang", "Cicilan", "Potongan Hutang"],
+      Keluarga: [
+        "Uang Bulanan Ortu",
+        "Biaya Kesehatan Ortu",
+        "Kebutuhan Harian Ortu",
+        "Oleh-oleh",
+        "Bantuan Keluarga Lain"
+      ],
       Penyesuaian: ["Penyesuaian Bank", "Biaya Admin Bank", "Koreksi Saldo", "Rounding"],
       Lainnya: ["Uang Kas", "Kewajiban", "Pengeluaran Rutin", "Pengeluaran Lain"],
     },
@@ -73,6 +82,11 @@ const OPTIONS = {
       Hadiah: ["Uang Saku", "Hadiah", "Donasi"],
       Refund: ["Refund Belanja", "Cashback"],
       Hutang: ["Pinjaman Ibu", "Pinjaman Teman", "Talangan", "Utang Baru"],
+      Keluarga: [
+        "Uang Saku dari Ortu",
+        "Bantuan Darurat",
+        "Hibah"
+      ],
       Penyesuaian: ["Penyesuaian Bank", "Koreksi Bunga", "Bonus Saldo", "Rounding Positif"],
       Lainnya: ["Uang Saku", "Bantuan", "Pemasukan Lain"],
     },
