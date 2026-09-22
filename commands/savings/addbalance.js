@@ -7,13 +7,13 @@ const OPTIONS = {
   jenis: ["Pemasukan", "Pengeluaran"],
 
   kategori: {
-    Pengeluaran: ["Makanan", "Transportasi", "Hiburan", "Utilitas", "Pendidikan", "Administrasi", "Belanja", "Investasi", "Hutang", "Keluarga", "Penyesuaian", "Lainnya"],
+    Pengeluaran: ["Konsumsi", "Transportasi", "Hiburan", "Utilitas", "Pendidikan", "Administrasi", "Belanja", "Investasi", "Hutang", "Keluarga", "Penyesuaian", "Lainnya"],
     Pemasukan: ["Gaji", "Usaha", "Investasi", "Hadiah", "Refund", "Hutang", "Keluarga", "Penyesuaian", "Lainnya"],
   },
 
   subKategori: {
     Pengeluaran: {
-      Makanan: ["Makanan", "Jajan", "Kopi", "Minuman"],
+      Konsumsi: ["Makan Berat", "Jajan", "Kopi", "Minuman"],
       Transportasi: ["Bensin", "Ojol", "Parkir", "Servis", "Darurat"],
       Hiburan: ["Game", "Streaming"],
       Utilitas: ["Internet", "Listrik", "Pulsa"],
