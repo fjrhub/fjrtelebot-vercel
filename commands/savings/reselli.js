@@ -91,6 +91,7 @@ export default {
         byDesc[desc].push(item);
       }
 
+      // 1. Handle Pasangan Selli (Pengeluaran & Pemasukan Usaha/Penjualan)
       for (const desc in byDesc) {
         const group = byDesc[desc];
         const pengeluaran = group.find(i => i.row[0] === 'Pengeluaran' && i.row[1] === 'Usaha' && i.row[2] === 'Penjualan');
@@ -102,29 +103,40 @@ export default {
           const akunMasuk = pemasukan.row[6] || "TidakDiketahui";
           const jmlKeluar = formatToShort(pengeluaran.row[4]);
           const jmlMasuk = formatToShort(pemasukan.row[4]);
+          
+          // Sanitasi deskripsi agar aman untuk command line
+          const cleanDesc = desc.replace(/\|/g, "-").replace(/"/g, "'");
+          
           entries.push({
             time,
-            command: `/selli ${akunKeluar} ${akunMasuk} ${jmlKeluar} ${jmlMasuk} -desc "${desc}"`
+            command: `/selli ${akunKeluar} ${akunMasuk} ${jmlKeluar} ${jmlMasuk} -desc "${cleanDesc}"`
           });
           processedIdx.add(pengeluaran.idx);
           processedIdx.add(pemasukan.idx);
         }
       }
 
+      // 2. Handle Transaksi Biasa (Output langsung dalam format addbalancei)
       for (const item of dateRows) {
         if (processedIdx.has(item.idx)) continue;
         const row = item.row;
-        const type = row[0];
+        
+        const jenis = row[0] || 'Pemasukan';
+        const kategori = row[1] || 'Lainnya';
+        const subKategori = row[2] || 'Lainnya';
+        // Ganti '|' dengan '-' agar tidak merusak parsing addbalancei
+        const desc = (row[3] || 'Tanpa Deskripsi').replace(/\|/g, "-"); 
+        const jumlah = row[4] || '0';
         const akun = row[6] || 'TidakDiketahui';
-        const jumlah = formatToShort(row[4]);
-        const desc = row[3] || 'Tanpa Deskripsi';
+        const metode = row[7] || 'Transfer';
+        const tag = row[10] || '-';
+        const catatan = row[11] || '-';
         const time = new Date(row[12]).getTime();
 
         let command;
-        if (type === 'Pemasukan') {
-          command = `/addbalance ${akun} ${jumlah} -desc "${desc}"`;
-        } else if (type === 'Pengeluaran') {
-          command = `/expense ${akun} ${jumlah} -desc "${desc}"`;
+        if (jenis === 'Pemasukan' || jenis === 'Pengeluaran') {
+          // Format langsung siap copy-paste ke addbalancei
+          command = `/addbalancei ${jenis}|${kategori}|${subKategori}|${desc}|${jumlah}|${akun}|${metode}|${tag}|${catatan}`;
         } else {
           continue;
         }
@@ -132,11 +144,15 @@ export default {
         entries.push({ time, command });
       }
 
+      // Urutkan berdasarkan waktu
       entries.sort((a, b) => a.time - b.time);
 
+      // 3. Format Output (Tanpa penomoran agar mudah di-copy per baris)
       let resultText = `📅 **Transaksi pada: ${targetDate}**\n\n`;
-      entries.forEach((e, i) => {
-        resultText += `**${i + 1}.** \`${e.command}\`\n`;
+      entries.forEach((e) => {
+        // Backtick (`) membuat Telegram menampilkan sebagai code block, 
+        // sehingga bisa di-tap/diklik untuk copy langsung dengan sempurna.
+        resultText += `\`${e.command}\`\n`;
       });
 
       return ctx.reply(resultText.trim(), { parse_mode: "Markdown" });
