@@ -1,22 +1,36 @@
 import { google } from "googleapis";
 
+/* =========================
+   GOOGLE SHEETS CLIENT
+========================= */
 function sheetsClient() {
   const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  if (!process.env.GOOGLE_CLIENT_EMAIL || !privateKey) throw new Error("Kredensial Google Sheets tidak lengkap");
+  if (!process.env.GOOGLE_CLIENT_EMAIL || !privateKey) {
+    throw new Error("Kredensial Google Sheets (CLIENT_EMAIL / PRIVATE_KEY) tidak lengkap di .env");
+  }
   const auth = new google.auth.GoogleAuth({
-    credentials: { client_email: process.env.GOOGLE_CLIENT_EMAIL, private_key: privateKey },
+    credentials: {
+      client_email: process.env.GOOGLE_CLIENT_EMAIL,
+      private_key: privateKey,
+    },
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
   return google.sheets({ version: "v4", auth });
 }
 
 async function fetchAllRows() {
-  if (!process.env.SPREADSHEET_ID) throw new Error("SPREADSHEET_ID tidak ditemukan");
+  if (!process.env.SPREADSHEET_ID) throw new Error("SPREADSHEET_ID tidak ditemukan di .env");
   const sheets = sheetsClient();
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: process.env.SPREADSHEET_ID, range: "Sheet1!A2:N" });
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: "Sheet1!A2:N",
+  });
   return res.data.values || [];
 }
 
+/* =========================
+   UTIL
+========================= */
 const formatToShort = (n) => {
   const num = Number(n);
   if (Number.isNaN(num)) return "0";
@@ -31,30 +45,52 @@ const formatToShort = (n) => {
   return String(num);
 };
 
+/* =========================
+   COMMAND
+========================= */
 export default {
   name: "reselli",
+
   async execute(ctx) {
     console.log("🚀 [RESELLI] Command diterima.");
     try {
       const ownerId = String(process.env.OWNER_ID).replace(/['"]+/g, '');
-      if (String(ctx.from?.id) !== ownerId) return ctx.reply("⛔ Akses ditolak.");
+      if (String(ctx.from?.id) !== ownerId) {
+        return ctx.reply("⛔ Akses ditolak. Hanya owner yang dapat menggunakan perintah ini.");
+      }
 
       const args = (ctx.message?.text || "").split(/\s+/);
       const targetDate = args[1];
-      if (!targetDate) return ctx.reply("⚠️ Format: `/reselli <YYYY-MM-DD>`", { parse_mode: "Markdown" });
 
+      if (!targetDate) {
+        return ctx.reply("⚠️ Format salah. Gunakan: `/reselli <YYYY-MM-DD>`\nContoh: `/reselli 2026-09-17`", { parse_mode: "Markdown" });
+      }
+
+      console.log(`🔄 [RESELLI] Mencari transaksi untuk tanggal: ${targetDate}`);
       const allRows = await fetchAllRows();
-      const dateRows = allRows.map((r, idx) => ({ row: r, idx })).filter(({ row }) => {
-        if (!row || !row[12]) return false;
-        return row[12].split('T')[0] === targetDate;
-      });
 
-      if (dateRows.length === 0) return ctx.reply(`❌ Tidak ditemukan transaksi untuk tanggal: ${targetDate}`);
+      const dateRows = allRows
+        .map((r, idx) => ({ row: r, idx }))
+        .filter(({ row }) => {
+          if (!row || !row[12]) return false;
+          const rowDateStr = row[12].split('T')[0];
+          return rowDateStr === targetDate;
+        });
+
+      if (dateRows.length === 0) {
+        return ctx.reply(`❌ Tidak ditemukan transaksi apa pun untuk tanggal: ${targetDate}`);
+      }
 
       const processedIdx = new Set();
-      const entries = [];
-      const byDesc = {};
+      
+      // Kita gunakan array terpisah agar bisa dikelompokkan dengan "enter"
+      const groups = {
+        selli: [],
+        transferi: [],
+        addbalancei: []
+      };
 
+      const byDesc = {};
       for (const item of dateRows) {
         const desc = item.row[3] || `__nonedesc_${item.idx}`;
         if (!byDesc[desc]) byDesc[desc] = [];
@@ -71,18 +107,56 @@ export default {
           const time = new Date(pemasukan.row[12]).getTime();
           const akunKeluar = pengeluaran.row[6] || "TidakDiketahui";
           const akunMasuk = pemasukan.row[6] || "TidakDiketahui";
+          const jmlKeluar = formatToShort(pengeluaran.row[4]);
+          const jmlMasuk = formatToShort(pemasukan.row[4]);
           const cleanDesc = desc.replace(/\|/g, "-").replace(/"/g, "'");
           
-          entries.push({
+          groups.selli.push({
             time,
-            command: `/selli ${akunKeluar} ${akunMasuk} ${formatToShort(pengeluaran.row[4])} ${formatToShort(pemasukan.row[4])} -desc "${cleanDesc}"`
+            command: `/selli ${akunKeluar} ${akunMasuk} ${jmlKeluar} ${jmlMasuk} -desc "${cleanDesc}"`
           });
           processedIdx.add(pengeluaran.idx);
           processedIdx.add(pemasukan.idx);
         }
       }
 
-      // 2. Handle Transaksi Biasa (Format addbalancei)
+      // 2. Handle Pasangan Transfer Antar Akun (TANPA PIPE, sesuai format transferi)
+      for (const desc in byDesc) {
+        const group = byDesc[desc];
+        const pengeluaranTransfer = group.find(i => i.row[0] === 'Pengeluaran' && i.row[1] === 'Transfer' && i.row[2] === 'Antar Akun');
+        const pemasukanTransfer = group.find(i => i.row[0] === 'Pemasukan' && i.row[1] === 'Transfer' && i.row[2] === 'Antar Akun');
+
+        if (pengeluaranTransfer && pemasukanTransfer) {
+          const time = new Date(pemasukanTransfer.row[12]).getTime();
+          
+          const akunAsal = pengeluaranTransfer.row[6] || "TidakDiketahui";
+          const akunTujuan = pemasukanTransfer.row[6] || "TidakDiketahui";
+          
+          // Gunakan nilai asli dari spreadsheet agar akurat
+          const jumlahKirim = pengeluaranTransfer.row[4] || "0";
+          const jumlahTerima = pemasukanTransfer.row[4] || "0";
+          
+          const rawDesc = pengeluaranTransfer.row[3] || "";
+          // Bersihkan deskripsi agar aman untuk format -desc "..."
+          const cleanDesc = rawDesc.replace(/\|/g, "-").replace(/"/g, "'");
+          const defaultDesc = `Transfer ${akunAsal} ke ${akunTujuan}`;
+          const finalDesc = (cleanDesc && cleanDesc !== defaultDesc) ? cleanDesc : defaultDesc;
+
+          // Bangun command: jika jumlah sama, pakai 3 argumen. Jika beda, pakai 4 argumen.
+          let command = `/transferi ${akunAsal} ${akunTujuan} ${jumlahKirim}`;
+          if (jumlahKirim !== jumlahTerima) {
+            command += ` ${jumlahTerima}`;
+          }
+          command += ` -desc "${finalDesc}"`;
+
+          groups.transferi.push({ time, command });
+          
+          processedIdx.add(pengeluaranTransfer.idx);
+          processedIdx.add(pemasukanTransfer.idx);
+        }
+      }
+
+      // 3. Handle Transaksi Biasa (addbalancei / expensei)
       for (const item of dateRows) {
         if (processedIdx.has(item.idx)) continue;
         const row = item.row;
@@ -94,32 +168,50 @@ export default {
         const jumlah = row[4] || '0';
         const akun = row[6] || 'TidakDiketahui';
         const metode = row[7] || 'Transfer';
-        
-        // PERBAIKAN: Jika kolom kosong, paksa jadi "-" agar konsisten saat di-copy
         const tag = (row[10] !== undefined && row[10].trim() !== "") ? row[10].trim() : "-";
         const catatan = (row[11] !== undefined && row[11].trim() !== "") ? row[11].trim() : "-";
         const time = new Date(row[12]).getTime();
 
         if (jenis === 'Pemasukan' || jenis === 'Pengeluaran') {
-          entries.push({ 
+          groups.addbalancei.push({ 
             time, 
             command: `/addbalancei ${jenis}|${kategori}|${subKategori}|${desc}|${jumlah}|${akun}|${metode}|${tag}|${catatan}` 
           });
         }
       }
 
-      entries.sort((a, b) => a.time - b.time);
+      // Urutkan setiap grup berdasarkan waktu agar rapi
+      const sortTime = (a, b) => a.time - b.time;
+      groups.selli.sort(sortTime);
+      groups.transferi.sort(sortTime);
+      groups.addbalancei.sort(sortTime);
 
+      // 4. Format Output dengan Pemisah "Enter" antar kategori
       let resultText = `📅 **Transaksi pada: ${targetDate}**\n\n`;
-      entries.forEach((e) => {
-        resultText += `\`${e.command}\`\n`;
-      });
 
-      return ctx.reply(resultText.trim(), { parse_mode: "Markdown" });
+      if (groups.selli.length > 0) {
+        resultText += `**💼 SELLI**\n`;
+        resultText += groups.selli.map(e => `\`${e.command}\``).join('\n') + `\n\n`;
+      }
+
+      if (groups.transferi.length > 0) {
+        resultText += `**🔄 TRANSFER**\n`;
+        resultText += groups.transferi.map(e => `\`${e.command}\``).join('\n') + `\n\n`;
+      }
+
+      if (groups.addbalancei.length > 0) {
+        resultText += `**💰 ADD BALANCE / EXPENSE**\n`;
+        resultText += groups.addbalancei.map(e => `\`${e.command}\``).join('\n') + `\n\n`;
+      }
+
+      // Hapus baris kosong berlebih di akhir
+      resultText = resultText.trim();
+
+      return ctx.reply(resultText, { parse_mode: "Markdown" });
 
     } catch (error) {
       console.error("💥 [RESELLI] CRASH:", error);
-      ctx.reply(`❌ Terjadi kesalahan: ${error.message}`).catch(console.error);
+      ctx.reply(`❌ Terjadi kesalahan sistem: ${error.message}`).catch(console.error);
     }
   },
 };
