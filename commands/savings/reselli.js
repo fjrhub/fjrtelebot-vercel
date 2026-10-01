@@ -82,13 +82,7 @@ export default {
       }
 
       const processedIdx = new Set();
-      
-      // Kita gunakan array terpisah agar bisa dikelompokkan dengan "enter"
-      const groups = {
-        selli: [],
-        transferi: [],
-        addbalancei: []
-      };
+      const entries = [];
 
       const byDesc = {};
       for (const item of dateRows) {
@@ -111,7 +105,7 @@ export default {
           const jmlMasuk = formatToShort(pemasukan.row[4]);
           const cleanDesc = desc.replace(/\|/g, "-").replace(/"/g, "'");
           
-          groups.selli.push({
+          entries.push({
             time,
             command: `/selli ${akunKeluar} ${akunMasuk} ${jmlKeluar} ${jmlMasuk} -desc "${cleanDesc}"`
           });
@@ -120,7 +114,7 @@ export default {
         }
       }
 
-      // 2. Handle Pasangan Transfer Antar Akun (TANPA PIPE, sesuai format transferi)
+      // 2. Handle Pasangan Transfer Antar Akun (TANPA PIPE)
       for (const desc in byDesc) {
         const group = byDesc[desc];
         const pengeluaranTransfer = group.find(i => i.row[0] === 'Pengeluaran' && i.row[1] === 'Transfer' && i.row[2] === 'Antar Akun');
@@ -132,31 +126,28 @@ export default {
           const akunAsal = pengeluaranTransfer.row[6] || "TidakDiketahui";
           const akunTujuan = pemasukanTransfer.row[6] || "TidakDiketahui";
           
-          // Gunakan nilai asli dari spreadsheet agar akurat
           const jumlahKirim = pengeluaranTransfer.row[4] || "0";
           const jumlahTerima = pemasukanTransfer.row[4] || "0";
           
           const rawDesc = pengeluaranTransfer.row[3] || "";
-          // Bersihkan deskripsi agar aman untuk format -desc "..."
           const cleanDesc = rawDesc.replace(/\|/g, "-").replace(/"/g, "'");
           const defaultDesc = `Transfer ${akunAsal} ke ${akunTujuan}`;
           const finalDesc = (cleanDesc && cleanDesc !== defaultDesc) ? cleanDesc : defaultDesc;
 
-          // Bangun command: jika jumlah sama, pakai 3 argumen. Jika beda, pakai 4 argumen.
           let command = `/transferi ${akunAsal} ${akunTujuan} ${jumlahKirim}`;
           if (jumlahKirim !== jumlahTerima) {
             command += ` ${jumlahTerima}`;
           }
           command += ` -desc "${finalDesc}"`;
 
-          groups.transferi.push({ time, command });
+          entries.push({ time, command });
           
           processedIdx.add(pengeluaranTransfer.idx);
           processedIdx.add(pemasukanTransfer.idx);
         }
       }
 
-      // 3. Handle Transaksi Biasa (addbalancei / expensei)
+      // 3. Handle Transaksi Biasa (addbalancei)
       for (const item of dateRows) {
         if (processedIdx.has(item.idx)) continue;
         const row = item.row;
@@ -173,41 +164,23 @@ export default {
         const time = new Date(row[12]).getTime();
 
         if (jenis === 'Pemasukan' || jenis === 'Pengeluaran') {
-          groups.addbalancei.push({ 
+          entries.push({ 
             time, 
             command: `/addbalancei ${jenis}|${kategori}|${subKategori}|${desc}|${jumlah}|${akun}|${metode}|${tag}|${catatan}` 
           });
         }
       }
 
-      // Urutkan setiap grup berdasarkan waktu agar rapi
-      const sortTime = (a, b) => a.time - b.time;
-      groups.selli.sort(sortTime);
-      groups.transferi.sort(sortTime);
-      groups.addbalancei.sort(sortTime);
+      // 4. Urutkan SEMUA berdasarkan waktu (kronologis)
+      entries.sort((a, b) => a.time - b.time);
 
-      // 4. Format Output dengan Pemisah "Enter" antar kategori
+      // 5. Format Output (enter normal, tanpa pemisahan kategori)
       let resultText = `📅 **Transaksi pada: ${targetDate}**\n\n`;
+      entries.forEach((e) => {
+        resultText += `\`${e.command}\`\n`;
+      });
 
-      if (groups.selli.length > 0) {
-        resultText += `**💼 SELLI**\n`;
-        resultText += groups.selli.map(e => `\`${e.command}\``).join('\n') + `\n\n`;
-      }
-
-      if (groups.transferi.length > 0) {
-        resultText += `**🔄 TRANSFER**\n`;
-        resultText += groups.transferi.map(e => `\`${e.command}\``).join('\n') + `\n\n`;
-      }
-
-      if (groups.addbalancei.length > 0) {
-        resultText += `**💰 ADD BALANCE / EXPENSE**\n`;
-        resultText += groups.addbalancei.map(e => `\`${e.command}\``).join('\n') + `\n\n`;
-      }
-
-      // Hapus baris kosong berlebih di akhir
-      resultText = resultText.trim();
-
-      return ctx.reply(resultText, { parse_mode: "Markdown" });
+      return ctx.reply(resultText.trim(), { parse_mode: "Markdown" });
 
     } catch (error) {
       console.error("💥 [RESELLI] CRASH:", error);
